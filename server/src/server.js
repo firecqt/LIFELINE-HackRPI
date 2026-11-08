@@ -14,7 +14,8 @@ import * as DB from './db.js';
  * Client flow: create the sim -> connect the WebSocket -> start the stream -> receive frames.
  *
  *  POST   /api/sim         body {N, offset?, seed?, maxTimestep?, cellSize? (metres, default 3)}
- *                          -> 201 {simID, params: {N, offset, seed, maxTimestep, cellSize}, hiker: {start, end},
+ *                          -> 201 {simID, params: {N, offset, seed, maxTimestep, cellSize}, tickSeconds (sim time per tick),
+ *                                  hiker: {start, end},
  *                                  environment: {elevation, canopy, perimeter, travelTime}}
  *                          elevation/canopy/travelTime are {data, dims}: flattened row-major grids;
  *                          index with dims [rows, cols]. travelTime: minutes to walk from the LKP (hiker start).
@@ -63,7 +64,7 @@ api.post('/sim', async (req, res) => {
 
     const simID = randomUUID();
     await DB.simulations().insertOne({ _id: simID, params, createdAt: new Date() });
-    return res.status(201).json({ simID, params, hiker: created.hiker, environment: created.environment });
+    return res.status(201).json({ simID, params, tickSeconds: created.tickSeconds, hiker: created.hiker, environment: created.environment });
 });
 
 api.post('/sim/stream', async (req, res) => {

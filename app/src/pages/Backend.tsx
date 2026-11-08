@@ -10,7 +10,7 @@ import { Button, Panel, ProgressBar, Segmented } from '../components/ui';
 import { pingServer } from '../api/backendClient';
 import { createEngineSearch, stopEngineSearch, tickRateFor, useEngineLinks, type EngineLink, type LinkStatus } from '../api/backendLink';
 import { useAppStore } from '../store/appStore';
-import { TICK_SEC } from '../services/simulationService';
+import { ENGINE_TICK_SEC } from '../api/contract';
 
 const STATUS_META: Record<LinkStatus, { label: string; color: string }> = {
   ready: { label: 'Ready to launch', color: '#5F6B7D' },
@@ -198,8 +198,8 @@ function CreatePanel({ disabled }: { disabled: boolean }) {
         <NumberField label="Cell size (m)" value={cell} onChange={setCell} min={5} step={5} hint={`${km.toFixed(1)} km across`} />
         <NumberField label="Seed" value={seed} onChange={setSeed} min={0} placeholder="random" />
         <NumberField label="Base elevation (m)" value={offset} onChange={setOffset} step={50} />
-        <NumberField label="Engine timesteps" value={maxT} onChange={setMaxT} min={1} hint={`≈ ${Math.round((maxTn * TICK_SEC) / 60)} min of search time`} />
-        <NumberField label="Hours missing" value={hours} onChange={setHours} min={0.5} step={0.5} />
+        <NumberField label="Engine timesteps" value={maxT} onChange={setMaxT} min={1} hint={`≈ ${Math.round((maxTn * ENGINE_TICK_SEC) / 60)} min of search time`} />
+        <NumberField label="Hours missing" value={hours} onChange={setHours} min={0.5} step={0.5} hint="Case details only: the engine's prior starts at the LKP" />
       </div>
       {error && (
         <div className="mt-4 flex items-start gap-2 rounded-md border border-crit/30 bg-crit/5 px-3 py-2 text-[12.5px] text-crit">
@@ -285,13 +285,13 @@ function LinkRow({ link }: { link: EngineLink }) {
 
 function ContractPanel() {
   const rows: [string, string, string][] = [
-    ['POST /api/sim', '{ N, offset?, seed?, maxTimestep?, isReal }', 'Terrain (elevation, canopy), perimeter and the hiker start/end. Start becomes the last known point.'],
+    ['POST /api/sim', '{ N, offset?, seed?, maxTimestep?, cellSize, isReal }', 'Terrain (elevation, canopy), perimeter, the hiker start/end and the engine tick length. Start becomes the last known point.'],
     ['POST /api/sim/stream', '{ simID, tickRate }', 'Starts the engine clock. tickRate follows the map speed (1× ≈ 1.7 ticks/s).'],
     ['DELETE /api/sim/stream', '—', 'Stop, or restart from the map.'],
-    ['WS /ws/sim/stream', '{ simID, tick, status, hiker: { current }, drones: [{ id, pos, laps }] }', 'Moves drones and the hidden hiker; drone passes update the probability map; a pass over the hiker raises a sighting.'],
+    ['WS /ws/sim/stream', '{ simID, tick, elapsedMinutes, status, hiker: { current }, drones: [{ id, pos, laps }], prior }', 'Sets the clock and the prior (the engine\'s terrain and lost-person model), moves drones and the hidden hiker; drone passes update the probability map; a pass over the hiker raises a sighting.'],
   ];
   return (
-    <Panel title="What the frontend uses" subtitle="One engine tick = 20 s of search time on the map" bodyClass="p-0">
+    <Panel title="What the frontend uses" subtitle={`One engine tick = ${ENGINE_TICK_SEC} s of search time on the map`} bodyClass="p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">
           <tbody>

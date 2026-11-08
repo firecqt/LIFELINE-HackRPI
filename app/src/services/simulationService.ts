@@ -19,6 +19,8 @@ import { cellPod, computePosterior, computePrior, computeStats, makeSnapshot } f
 
 export const TICK_SEC = 20;
 export const BASE_TICK_MS = 600;
+/** Sim seconds per tick for a search: the engine's tick for engine searches, TICK_SEC otherwise. */
+export const tickSecOf = (env: { tickSec?: number }) => env.tickSec ?? TICK_SEC;
 export const SNAPSHOT_EVERY = 15; // ticks → 5 simulated minutes
 const HISTORY_EVERY = 3;
 const MAX_TICKS = 1440; // 8 simulated hours
@@ -633,8 +635,9 @@ export function dispatchGroundTeam(prev: SimState, env: MissionEnvironment, sign
   s.signals = s.signals.map((sig) => {
     if (sig.id !== signalId || sig.status !== 'pending') return sig;
     const dist = Math.hypot(sig.x - env.base.x, sig.y - env.base.y);
-    const eta = Math.round(Math.min(24, Math.max(6, dist / 3)));
-    addLog(s, 'ranger', `Ranger dispatched hasty ground team to ${sig.id} — ETA ${Math.round((eta * TICK_SEC) / 60)} min (sim)`);
+    // 6..24 ticks of TICK_SEC, converted to this search's ticks so the ETA is the same in sim time
+    const eta = Math.round((Math.min(24, Math.max(6, dist / 3)) * TICK_SEC) / tickSecOf(env));
+    addLog(s, 'ranger', `Ranger dispatched hasty ground team to ${sig.id} — ETA ${Math.round((eta * tickSecOf(env)) / 60)} min (sim)`);
     return { ...sig, status: 'verifying', etaTick: s.tick + eta, dispatchTick: s.tick };
   });
   void d;
@@ -819,12 +822,16 @@ export interface EngineFrame {
   status: 'running' | 'finished' | 'stopped';
   hiker: { x: number; y: number } | null;
   drones: { id: string; x: number; y: number; laps?: number }[];
+  /** Sim seconds since the start, on the engine's clock. */
+  elapsedSec?: number;
+  /** The engine's prior (row-major, sums to 1). Used instead of the local prior when present. */
+  prior?: Float32Array | null;
 }
 
 /**
- * Applies a frame from the backend engine. The engine owns the clock, hiker and drone positions;
- * this keeps everything the engine does not send yet (prior, Bayesian coverage update, sightings,
- * ground-team timing, stats) consistent with those positions so every view renders as usual.
+ * Applies a frame from the backend engine. The engine owns the clock, the prior, and the hiker and
+ * drone positions; this keeps everything the engine does not send yet (Bayesian coverage update,
+ * sightings, ground-team timing, stats) consistent with those so every view renders as usual.
  */
 export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: EngineFrame, templates: SimDrone[] = prev.drones): SimState {
   const s: SimState = { ...prev, events: [] };
@@ -834,12 +841,18 @@ export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: Eng
   const firstFrame = !prev.drones.length || !prev.drones.some((d) => d.objective.startsWith('Engine'));
   const dt = Math.max(0, f.tick - prev.tick);
   s.tick = f.tick;
-  s.elapsedSec = f.tick * TICK_SEC;
+  s.elapsedSec = f.elapsedSec ?? f.tick * tickSecOf(env);
   if (f.hiker && f.hiker.x >= 0 && f.hiker.y >= 0 && f.hiker.x < W && f.hiker.y < g.height) s.hiker = { x: f.hiker.x, y: f.hiker.y };
 
   if (dt > 0 || firstFrame) {
-    const hours = env.hoursMissingAtStart + s.elapsedSec / 3600;
-    s.mobileHours = computePrior(env.travelTime, env.behavior, hours, s.prior, env.mobileScale);
+    if (f.prior && f.prior.length === s.prior.length) {
+      // The engine's prior counts time from the LKP, so the hiker has been mobile for the elapsed time
+      s.prior.set(f.prior);
+      s.mobileHours = s.elapsedSec / 3600;
+    } else {
+      const hours = env.hoursMissingAtStart + s.elapsedSec / 3600;
+      s.mobileHours = computePrior(env.travelTime, env.behavior, hours, s.prior, env.mobileScale);
+    }
     const relax = Math.pow(0.9985, dt);
     const L = s.likelihood;
     for (let i = 0; i < L.length; i++) if (L[i] < 1) L[i] = 1 - (1 - L[i]) * relax;
@@ -937,7 +950,7 @@ export function tickGroundTeamOnly(prev: SimState, env: MissionEnvironment): Sim
   if (prev.status !== 'running') return prev;
   const s: SimState = { ...prev, events: [] };
   s.tick += 1;
-  s.elapsedSec += TICK_SEC;
+  s.elapsedSec += tickSecOf(env);
   for (const sig of s.signals) {
     if (sig.status === 'verifying' && sig.etaTick !== null && s.tick >= sig.etaTick) groundTeamArrives(s, env, sig, { detection: false });
   }

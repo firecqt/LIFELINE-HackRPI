@@ -3,7 +3,7 @@
  * engine/simulation.py). Mirrors what the backend sends; mapping to frontend models lives in
  * backendAdapter.ts.
  *
- *   POST   /api/sim          {N, offset?, seed?, maxTimestep?, isReal?}  -> 201 CreateSimResponse
+ *   POST   /api/sim          {N, offset?, seed?, maxTimestep?, cellSize?, isReal?}  -> 201 CreateSimResponse
  *   POST   /api/sim/stream   {simID, tickRate?}                          -> 202/200 StartStreamResponse
  *   DELETE /api/sim/stream                                               -> 200 StopStreamResponse
  *   WS     /ws/sim/stream    one JSON SimFrame per engine tick (single client; newest connection wins)
@@ -23,6 +23,8 @@ export interface SimParams {
   offset?: number;
   seed?: number | null;
   maxTimestep?: number;
+  /** Metres per cell (engine default 3). */
+  cellSize?: number;
 }
 
 /** Body for POST /api/sim. `isReal` is sent for the planned real-data engine; today's server ignores it. */
@@ -33,6 +35,8 @@ export interface CreateSimRequest extends SimParams {
 export interface CreateSimResponse {
   simID: string;
   params: Required<Omit<SimParams, 'seed'>> & { seed: number };
+  /** Sim seconds per engine tick (the frames' clock). */
+  tickSeconds?: number;
   hiker: { start: WireCell; end: WireCell };
   environment: {
     elevation: WireGrid;
@@ -40,6 +44,8 @@ export interface CreateSimResponse {
     canopy: WireGrid;
     /** 4 [x, y] corners, clockwise. */
     perimeter: [number, number][];
+    /** Minutes to walk from the LKP to each cell. */
+    travelTime?: WireGrid;
   };
 }
 
@@ -68,9 +74,22 @@ export interface SimFrame {
   tick: number;
   maxTimestep: number;
   status: 'running' | 'finished' | 'stopped';
-  hiker: { current: WireCell };
+  elapsedMinutes?: number;
+  hiker: { current: WireCell; position?: [number, number]; moving?: boolean };
   drones: WireDrone[];
+  /** The engine's prior for the hiker's location: probability of a cell = data[i] / 100000 * max. */
+  prior?: { data: number[]; dims: [number, number]; max: number };
+  /** Travel-time radii (minutes from the LKP) of the 25/50/75/95% rings. */
+  rings?: number[];
+  /** How the prior rates the true hiker (evaluation only). */
+  check?: { probability: number; massAbove: number; ring: number };
 }
+
+/** Sim seconds per engine tick, until a CreateSimResponse says otherwise (engine/simulation.py TICK_SECONDS). */
+export const ENGINE_TICK_SEC = 6;
+
+/** Prior levels are integers 0..PRIOR_LEVELS relative to the frame's max. */
+export const PRIOR_LEVELS = 100_000;
 
 export function isSimFrame(x: unknown): x is SimFrame {
   const o = x as SimFrame;

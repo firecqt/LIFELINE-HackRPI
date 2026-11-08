@@ -6,7 +6,7 @@ import zmq
 
 from environment import build_grid, make_perimeter_fake
 from prior import static_layers
-from simulation import Simulation
+from simulation import TICK_SECONDS, Simulation
 from stream import StreamManager
 
 # Commands from Node (REQ/REP) and frames to Node (PUB/SUB)
@@ -39,6 +39,8 @@ def create_fake_sim(value: dict) -> dict:
     sim = Simulation(None, value)
     return {
         "seed": seed,
+        # sim time per tick: frames are on this clock
+        "tickSeconds": TICK_SECONDS,
         "environment": {
             "elevation": grid_payload(build_grid("elevation", N, offset, seed, cell_size), decimals=2),
             "canopy": grid_payload(build_grid("canopy", N, offset, seed, cell_size)),

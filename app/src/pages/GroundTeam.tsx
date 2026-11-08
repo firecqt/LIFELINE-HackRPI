@@ -14,7 +14,7 @@ import ThermalFrame from '../components/operations/ThermalFrame';
 import { useAppStore } from '../store/appStore';
 import { CONDITION_LABELS, GROUND_TEAM, fieldObservation, identityChecks } from '../services/groundTeamService';
 import { cellToLatLon } from '../services/terrainService';
-import { TICK_SEC } from '../services/simulationService';
+import { tickSecOf } from '../services/simulationService';
 import { PRIORITY_META, SIGNAL_STATUS_META } from '../lib/statusMeta';
 import { formatLatLon } from '../lib/format';
 
@@ -104,7 +104,7 @@ function etaInfo(t: Task) {
   const { sig, sim } = t;
   const total = Math.max(1, (sig.etaTick ?? sim.tick) - (sig.dispatchTick ?? sim.tick));
   const left = Math.max(0, (sig.etaTick ?? sim.tick) - sim.tick);
-  return { progress: 1 - left / total, minutes: Math.round((left * TICK_SEC) / 60) };
+  return { progress: 1 - left / total, minutes: Math.round((left * tickSecOf(t.env)) / 60) };
 }
 
 function TaskItem({ t, selected, onClick }: { t: Task; selected: boolean; onClick: () => void }) {

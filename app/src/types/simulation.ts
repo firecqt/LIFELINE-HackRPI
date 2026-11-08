@@ -203,4 +203,6 @@ export interface MissionEnvironment {
   hoursMissingAtStart: number;
   /** Scales Tobler mobile time so the prior's support matches the clamped search area. */
   mobileScale: number;
+  /** Sim seconds per tick when the backend engine sets the clock (default TICK_SEC). */
+  tickSec?: number;
 }
