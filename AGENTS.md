@@ -9,7 +9,10 @@ Terrain-derived priors for Informed Drone Swarm Coordination in Hiker Search-and
 + [x] Step 1
 + [x] Step 2
 + [x] Step 3
-+ [ ] Step 4
++ [x] Step 4
++ [x] Step 5
++ [x] Step 6
++ [ ] Step 7
 
 ### Step 1: Basic setup
 We will use a node webserver with a python engine, communicating data via IPC. Express and ZeroMQ will be used to coordinate data. MongoDB will be used to hold simulation data.
@@ -21,7 +24,13 @@ Set up basic skeleton endpoints for accessing data. Read the documentation in se
 Once the MQ is hooked, write functions to generate elevation and foilage data. Elevation data should use perlin noise over an NxN grid about an offset variable (optional). The foilage data should use labels 1, 2, 3 to indicate no interference, low interference, and high interference (simulates foilage impact on camera). Finally also write a function that returns the perimeter of the area as 4 [x, y] coordinates boxing the grid. 
 
 ### Step 4: Set up MongoDB
-Still working out how to do this.
+The role of MongoDB is to track simulations, using a single Simulations collection. MongoDB is hosted on Atlas; the connection URI is read from `process.env.MONGO_CONN` (set in server/.env). The Simulations collection tracks only the hyperparameters necessary to replay a simulation (N, offset, seed, maxTimestep). Nothing else is stored: a simulation bootstraps itself from its hyperparameters, so the engine regenerates the environment (Canopy, Elevation, and Perimeter) and, for fake data, the hiker's start and end positions deterministically from them.
 
-### Step 5: One Simple Drone Agent
-This is an agent that visits the hiker's LKP (start) then the hiker's found position (end) then returns to 0,0. It can be hard coded, and should follow the timestep rule. Each timestep it will move 1 position forward
+### Step 5: Set up a WebSocket stream
+All REST endpoints use /api as a prefix. The API is intentionally minimal and supports a single client at a time (demo scope, no multi-stream): POST /api/sim creates a simulation and returns its static data (params, environment, hiker start/end); POST /api/sim/stream sends a "start simulation" message via IPC (replacing any running sim) and DELETE /api/sim/stream stops it. Frames are published by the engine over ZeroMQ PUB/SUB and relayed to the single WebSocket client on /ws/sim/stream.
+
+### Step 6: Create a (fake) simulation class
+A simulation takes some hyperparameters and bootstraps itself. It constructs the environment state like elevations and canopy. It initializes the hiker agent and drone agent(s). It has a step function that updates agents sequentially. Eventually it should support sending a simulation frame that can be put onto a websocket stream.  
+
+### Step 7: One Simple Drone Agent
+This is an agent that visits the hiker's LKP (start) then the hiker's found position (end) then returns to 0,0. It can be hard coded. 

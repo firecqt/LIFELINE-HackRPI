@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import numpy as np
 
 
@@ -83,3 +85,36 @@ def make_perimeter_fake(N: int):
     return [
         [0, N], [N, N], [N, 0], [0, 0]
     ]
+
+
+def derived_seeds(seed: int) -> dict:
+    '''
+    Each generator gets its own seed derived from the sim seed, so they aren't correlated
+    and each one can be rebuilt on its own.
+    '''
+    elevation, canopy, hiker = np.random.SeedSequence(seed).generate_state(3)
+    return {"elevation": int(elevation), "canopy": int(canopy), "hiker": int(hiker)}
+
+
+def make_hiker_fake(N: int, seed: int) -> dict:
+    '''
+    Hiker start (last known position) and end (found position) as [row, col], 0-based.
+    '''
+    rng = np.random.default_rng(derived_seeds(seed)["hiker"])
+    return {
+        "start": rng.integers(0, N, size=2).tolist(),
+        "end": rng.integers(0, N, size=2).tolist(),
+    }
+
+
+@lru_cache(maxsize=8)
+def build_grid(field: str, N: int, offset: float, seed: int) -> np.ndarray:
+    '''
+    Deterministically rebuild one environment grid from a sim's hyperparameters.
+    Cached so a sim that is created and then streamed only builds its grids once.
+    '''
+    seeds = derived_seeds(seed)
+    match field:
+        case "elevation": return make_elevation_fake(N, offset=offset, seed=seeds["elevation"])
+        case "canopy": return make_foilage_fake(N, seed=seeds["canopy"])
+        case _: raise ValueError(f"Unknown environment field {field}")
