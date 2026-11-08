@@ -53,6 +53,12 @@ class StreamManager:
         self.sim = None
         return {"status": "stopped", "simID": frame["simID"], "tick": frame["tick"]}
 
+    def resolve_signal(self, sim_id: str, signal_id: str, action: str) -> dict:
+        '''Passes a ranger's decision on a signal to the running sim (see Simulation.resolve_signal)'''
+        if self.sim is None or self.sim.sim_id != sim_id:
+            raise ValueError(f"Simulation {sim_id} is not streaming")
+        return self.sim.resolve_signal(signal_id, action)
+
     def ms_until_next_tick(self) -> int | None:
         if self.sim is None:
             return None

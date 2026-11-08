@@ -20,7 +20,8 @@ from simulation import TICK_SECONDS, Simulation
 
 
 def run(seeds: int, N: int, cell_size: float, max_timestep: int, ticks: list[int]):
-    base = {'N': N, 'offset': 1000, 'maxTimestep': max_timestep, 'cellSize': cell_size}
+    # No drones: only the hiker's walk is measured
+    base = {'N': N, 'offset': 1000, 'maxTimestep': max_timestep, 'cellSize': cell_size, 'drones': []}
     rings_at = {t: [] for t in ticks}
     reach_at = {t: [] for t in ticks}
     resting, edge = [], 0

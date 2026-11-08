@@ -265,6 +265,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sess = get().sessions[id];
     if (!sess) return;
     const sim = dispatchGroundTeam(sess.sim, sess.env, signalId);
+    if (engineDriven.has(id)) engineHandlers.signal?.(id, signalId, 'dispatch');
     const status = sim.status === 'paused' ? 'running' : sim.status;
     set((st) => ({
       sessions: { ...st.sessions, [id]: { env: sess.env, sim: { ...sim, status } } },
@@ -278,6 +279,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const prevStatus = sess.sim.status;
     let sim = confirmSignal(sess.sim, sess.env, signalId, report);
     if (sim === sess.sim) return;
+    if (engineDriven.has(id)) engineHandlers.signal?.(id, signalId, report.verdict === 'subject' ? 'confirmed' : report.verdict === 'other_person' ? 'not_subject' : 'false_positive');
     // A cleared signal resumes a paused search; a confirmed subject completes the mission.
     if (sim.status === 'paused' && prevStatus === 'paused' && report.verdict !== 'subject') sim = { ...sim, status: 'running' };
     const now = Date.now();
@@ -302,6 +304,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sess = get().sessions[id];
     if (!sess) return;
     const sim = dismissSignal(sess.sim, signalId);
+    if (engineDriven.has(id)) engineHandlers.signal?.(id, signalId, 'dismiss');
     const status = sim.status === 'paused' ? 'running' : sim.status;
     set((st) => ({
       sessions: { ...st.sessions, [id]: { env: sess.env, sim: { ...sim, status } } },
@@ -313,6 +316,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sess = get().sessions[id];
     if (!sess) return;
     const sim = standDown(sess.sim, sess.env);
+    if (engineDriven.has(id)) engineHandlers.standDown?.(id);
     set((st) => ({
       sessions: { ...st.sessions, [id]: { env: sess.env, sim } },
       activity: [{ id: `act-${++actSeq}`, at: Date.now(), missionId: id, kind: 'ranger' as const, message: `Mission ${id} stood down — drones released to fleet` }, ...st.activity].slice(0, 120),

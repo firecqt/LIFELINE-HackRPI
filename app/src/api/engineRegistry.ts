@@ -1,4 +1,5 @@
 import type { SimDrone } from '../types/drone';
+import type { SignalAction } from './contract';
 
 /**
  * Which searches are driven by the backend engine. Kept in its own module so the app store can
@@ -13,4 +14,7 @@ export const engineDroneTemplates = new Map<string, SimDrone[]>();
 export const engineHandlers: {
   start?: (missionId: string, speed: number) => void;
   reset?: (missionId: string) => void;
+  /** A ranger's decision on a signal, forwarded to the engine. */
+  signal?: (missionId: string, signalId: string, action: SignalAction) => void;
+  standDown?: (missionId: string) => void;
 } = {};

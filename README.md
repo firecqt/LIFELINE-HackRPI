@@ -70,10 +70,11 @@ The frontend proxies `/_backend/*` (HTTP and WebSocket) to the Node server, defa
 
 | Engine data | Where it shows up |
 |---|---|
-| `POST /api/sim` → elevation, canopy (1/2/3), hiker start/end | Terrain map (canopy 1 → open, 2 → trees, 3 → dense forest); start = last known position; probability map is computed from this terrain |
-| `WS /ws/sim/stream` frames → `tick`, `hiker.current`, `drones[].pos` | Engine tick = 20 s of search time; drones move on the map and in every panel; each drone pass lowers the probability under it; a pass over the hiker raises a sighting |
+| `POST /api/sim` → elevation, canopy (1/2/3), hiker start/end, base, search area and blocks | Terrain map (canopy 1 → open, 2 → trees, 3 → dense forest); start = last known position; drones stage at the base and search the engine's blocks |
+| `WS /ws/sim/stream` frames → clock, prior, likelihood, drones, auctions, signals, events | Engine tick = 6 s of search time. The engine flies the fleet drones (launch, battery, return, charge), runs the block auction, sweeps and detections; the map, drone table, auction view and alerts show its state |
+| `POST /api/sim/stream/signal` ← ranger decisions | Dispatching, dismissing or confirming a sighting tells the engine to keep orbiting, release the drone, or end the search |
 
-The engine owns the clock for these searches. Sightings, the ground-team flow and recovery still run in the browser.
+The engine runs these searches: the clock, prior, drones, auction, sensing and detections. The ranger's decisions, ground-team travel and confirmation, and recovery run in the browser.
 Code: `app/src/api/contract.ts` (wire types), `backendClient.ts` (HTTP/WS), `backendAdapter.ts` (wire → app models),
 `backendLink.ts` (stream lifecycle), `simulationService.applyEngineFrame` (frame → `SimState`).
 

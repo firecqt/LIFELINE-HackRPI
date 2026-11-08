@@ -6,13 +6,13 @@
  */
 import type { GridPoint, TerrainGrid, VegetationClass } from '../types/terrain';
 import type { MissingPersonReport, Mission, Park } from '../types/mission';
-import type { MissionEnvironment, SimState } from '../types/simulation';
+import type { MissionEnvironment, SearchBlock, SimState } from '../types/simulation';
 import type { FleetDrone } from '../types/drone';
 import { PRIOR_LEVELS, type CreateSimResponse, type SimFrame, type WireCell, type WireGrid } from './contract';
 import type { EngineFrame } from '../services/simulationService';
 import { registerTerrain } from '../services/terrainService';
 import { registerPark } from '../data/mockParks';
-import { createEnvironment } from '../services/missionService';
+import { BLOCK, createEnvironment } from '../services/missionService';
 import { createSimulation } from '../services/simulationService';
 
 /** Engine canopy class (1 none / 2 low / 3 high interference) → frontend vegetation class + density. */
@@ -68,11 +68,13 @@ export function gridFromBackend(parkId: string, created: CreateSimResponse, cell
     }
 
   const lkp = clampPoint(toPoint(created.hiker.start) ?? { x: W >> 1, y: H >> 1 }, W, H);
-  // Drones stage a short walk from the last-known point, toward the middle of the area.
+  // Drones stage where the engine says; older engines don't say, so stage a short walk from the
+  // last-known point toward the middle of the area.
   const toward = { x: W / 2 - lkp.x, y: H / 2 - lkp.y };
   const len = Math.hypot(toward.x, toward.y) || 1;
   const step = Math.min(8, Math.max(2, Math.round(Math.min(W, H) * 0.06)));
-  const base = clampPoint({ x: Math.round(lkp.x + (toward.x / len) * step), y: Math.round(lkp.y + (toward.y / len) * step) }, W, H);
+  const engineBase = toPoint(created.base);
+  const base = clampPoint(engineBase ?? { x: Math.round(lkp.x + (toward.x / len) * step), y: Math.round(lkp.y + (toward.y / len) * step) }, W, H);
 
   return {
     id: `backend:${simID}`,
@@ -191,11 +193,38 @@ export function buildBackendSearch(o: BackendSearchOptions): BackendSearch {
   const env = createEnvironment(mission, report, park);
   // Frames are on the engine's clock, not the local sim's
   if (o.created.tickSeconds) env.tickSec = o.created.tickSeconds;
+  useEngineSearch(env, o.created);
   const sim = createSimulation(env, mission, o.drones, Date.now());
   // The engine owns the hiker's true position; at tick 0 that is the start (last known point).
   const truth = toPoint(o.created.hiker.start);
   if (truth) sim.hiker = clampPoint(truth, grid.width, grid.height);
   return { park, report, mission, env, sim };
+}
+
+/**
+ * The engine's drones search its own area and blocks, so the environment uses them instead of the
+ * ones createEnvironment derived locally (block indices and ids follow the same rule on both sides).
+ */
+function useEngineSearch(env: MissionEnvironment, created: CreateSimResponse) {
+  const search = created.search;
+  if (!search) return;
+  const g = env.grid;
+  const W = g.width;
+  const [rows, cols] = assertGrid('searchArea', search.searchArea);
+  if (rows !== g.height || cols !== W) throw new Error(`Backend searchArea dims ${rows}×${cols} do not match the terrain`);
+  if (search.blockSize !== BLOCK) throw new Error(`Backend blocks are ${search.blockSize} cells; the app uses ${BLOCK}`);
+  const area = Uint8Array.from(search.searchArea.data);
+  const sectorOf = new Map(search.blocks.map((b) => [b.index, b.sector]));
+  const blocks: SearchBlock[] = env.blocks.map((b) => {
+    const cells: number[] = [];
+    for (let y = b.by * BLOCK; y < Math.min(g.height, b.by * BLOCK + BLOCK); y++)
+      for (let x = b.bx * BLOCK; x < Math.min(W, b.bx * BLOCK + BLOCK); x++) if (area[y * W + x]) cells.push(y * W + x);
+    return { ...b, cells, sector: sectorOf.get(b.index) ?? b.sector };
+  });
+  env.searchArea = area;
+  env.searchAreaCells = area.reduce((n, v) => n + v, 0);
+  env.blocks = blocks;
+  env.sectors = search.sectors;
 }
 
 /** Engine prior levels → row-major probabilities summing to 1 (null if missing or malformed). */
@@ -214,18 +243,43 @@ export function priorFromWire(prior: SimFrame['prior']): Float32Array | null {
   return p;
 }
 
-/** Engine frame → frontend coordinates (drones at cell centres). */
+const rc = (p: [number, number]): GridPoint => ({ x: p[1], y: p[0] });
+
+/** Engine frame → frontend coordinates (x = col, y = row; drone positions are continuous). */
 export function frameFromWire(f: SimFrame): EngineFrame {
+  const likelihood = f.likelihood && f.likelihood.data.length === f.likelihood.dims[0] * f.likelihood.dims[1] ? Float32Array.from(f.likelihood.data) : null;
   return {
     tick: f.tick,
     maxTimestep: f.maxTimestep,
     status: f.status,
     elapsedSec: typeof f.elapsedMinutes === 'number' ? f.elapsedMinutes * 60 : undefined,
     prior: priorFromWire(f.prior),
+    likelihood,
+    blockOwner: f.blockOwner,
+    blockSearchCount: f.blockSearchCount,
+    searched: f.searched,
+    auctions: (f.auctions ?? []).map((a) => ({ ...a, center: rc(a.center) })),
+    signals: (f.signals ?? []).map((s) => ({ ...rc(s.pos), id: s.id, droneId: s.droneId, confidence: s.confidence, tick: s.tick, isTrue: s.isTrue })),
+    events: f.events,
     hiker: toPoint(f.hiker?.current),
     drones: (f.drones ?? []).flatMap((d) => {
-      const p = toPoint(d.pos);
-      return p ? [{ id: d.id, x: p.x + 0.5, y: p.y + 0.5, laps: d.laps }] : [];
+      if (!Array.isArray(d.pos) || d.pos.length < 2) return [];
+      return [{
+        ...rc(d.pos),
+        id: d.id,
+        status: d.status,
+        objective: d.objective,
+        battery: d.battery,
+        heading: d.heading,
+        agl: d.agl,
+        currentBlock: d.currentBlock,
+        queue: d.queue,
+        path: d.path?.map(([r, c, mode]) => ({ x: c, y: r, mode })),
+        distanceM: d.distanceM,
+        cellsSearched: d.cellsSearched,
+        blocksCompleted: d.blocksCompleted,
+        holdingSignalId: d.holdingSignalId,
+      }];
     }),
   };
 }

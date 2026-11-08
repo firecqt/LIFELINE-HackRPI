@@ -13,6 +13,7 @@ Terrain-derived priors for Informed Drone Swarm Coordination in Hiker Search-and
 + [x] Step 5
 + [x] Step 6
 + [ ] Step 7
++ [ ] Step 8
 
 ### Step 1: Basic setup
 We will use a node webserver with a python engine, communicating data via IPC. Express and ZeroMQ will be used to coordinate data. MongoDB will be used to hold simulation data.
@@ -37,3 +38,6 @@ Use a mixture of current momentum and downhill descent (bound it simply) to rand
 
 ### Step 8: Implement a PDF based on the Koenser rings
 This should be a matrix where a cell is a float. It should be passable to agents.
+
+### Step 8: Multi-drone search in the engine
+The engine runs the whole drone search the frontend (/app) shows: the fleet drones it is sent on create (launch, battery, return to base, charging), a block auction over 4x4-cell blocks (engine/bidding.py), lawnmower sweeps whose thermal passes lower the likelihood (engine/drones.py, engine/search.py), and true/false detection signals. Frames (v2) carry all of it. The frontend keeps the human workflow (ranger decisions, ground teams) and sends decisions back with POST /api/sim/stream/signal.

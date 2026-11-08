@@ -29,7 +29,7 @@ def read_params(value: dict) -> tuple[int, float, int, float]:
 def create_fake_sim(value: dict) -> dict:
     '''
     Settle the hyperparameters for a new fake simulation and build everything static about it.
-    value: {N, maxTimestep, offset?, seed?, cellSize?}. A random seed is drawn when none is given; the returned seed
+    value: {N, maxTimestep, offset?, seed?, cellSize?, drones?}. A random seed is drawn when none is given; the returned seed
     is what must be stored to rebuild the sim later.
     '''
     if value.get("seed") is None:
@@ -50,6 +50,10 @@ def create_fake_sim(value: dict) -> dict:
         },
         # end: where the hiker is found (the walk heads there)
         "hiker": {"start": sim.lkp, "end": sim.hiker.end},
+        # drone staging cell [row, col]
+        "base": sim.base,
+        # search area, 4x4 blocks and sectors the drones work in
+        "search": sim.grid.payload(),
     }
 
 
@@ -63,6 +67,8 @@ def handle_message(key, value, streams: StreamManager):
         case "START_SIM": return streams.start(value["simID"], value["params"], value.get("tickRate"))
         # value: none (stops whichever sim is running)
         case "STOP_SIM": return streams.stop()
+        # value: {simID, signalId, action}: a ranger's decision on a detection signal
+        case "RESOLVE_SIGNAL": return streams.resolve_signal(value["simID"], value["signalId"], value["action"])
         case _: raise ValueError(f"Could not associate an action with key {key}")
 
 

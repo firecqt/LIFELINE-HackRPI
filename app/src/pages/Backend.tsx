@@ -285,10 +285,11 @@ function LinkRow({ link }: { link: EngineLink }) {
 
 function ContractPanel() {
   const rows: [string, string, string][] = [
-    ['POST /api/sim', '{ N, offset?, seed?, maxTimestep?, cellSize, isReal }', 'Terrain (elevation, canopy), perimeter, the hiker start/end and the engine tick length. Start becomes the last known point.'],
+    ['POST /api/sim', '{ N, offset?, seed?, maxTimestep?, cellSize, drones, isReal }', 'Terrain (elevation, canopy), perimeter, hiker start/end, the drones\' staging base, the search area and its blocks, and the engine tick length. Start becomes the last known point; the engine flies the fleet drones sent here.'],
     ['POST /api/sim/stream', '{ simID, tickRate }', 'Starts the engine clock. tickRate follows the map speed (1× ≈ 1.7 ticks/s).'],
-    ['DELETE /api/sim/stream', '—', 'Stop, or restart from the map.'],
-    ['WS /ws/sim/stream', '{ simID, tick, elapsedMinutes, status, hiker: { current }, drones: [{ id, pos, laps }], prior }', 'Sets the clock and the prior (the engine\'s terrain and lost-person model), moves drones and the hidden hiker; drone passes update the probability map; a pass over the hiker raises a sighting.'],
+    ['DELETE /api/sim/stream', '—', 'Stop, restart from the map, or stand the search down.'],
+    ['POST /api/sim/stream/signal', '{ simID, signalId, action }', 'The ranger\'s decision on a sighting (dispatch, dismiss, not a person, not the subject, confirmed) so the engine releases or recalls its drones.'],
+    ['WS /ws/sim/stream', '{ tick, elapsedMinutes, status, hiker, drones, prior, likelihood, blockOwner, searched, auctions, signals, events }', 'Everything the search map shows: the clock, the prior, each drone\'s flight, battery and assigned blocks, auction rounds, swept cells, the probability map, and sightings for the ranger.'],
   ];
   return (
     <Panel title="What the frontend uses" subtitle={`One engine tick = ${ENGINE_TICK_SEC} s of search time on the map`} bodyClass="p-0">

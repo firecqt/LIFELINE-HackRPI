@@ -2,7 +2,7 @@
  * HTTP + WebSocket client for the LIFELINE backend. Everything goes through the Vite proxy at
  * /_backend (see vite.config.ts), which forwards to the Node server on :3000.
  */
-import { isSimFrame, type CreateSimRequest, type CreateSimResponse, type SimFrame, type StartStreamResponse, type StopStreamResponse } from './contract';
+import { isSimFrame, type CreateSimRequest, type CreateSimResponse, type SimFrame, type StartStreamResponse, type SignalAction, type StopStreamResponse } from './contract';
 
 export const BACKEND_BASE = '/_backend';
 const DOWN_MSG = 'Cannot reach the backend. Is the server running (cd server && npm run dev)?';
@@ -56,6 +56,10 @@ export const startStream = (simID: string, tickRate?: number) =>
   request<StartStreamResponse>('/api/sim/stream', { method: 'POST', body: JSON.stringify(tickRate ? { simID, tickRate } : { simID }) });
 
 export const stopStream = () => request<StopStreamResponse>('/api/sim/stream', { method: 'DELETE' });
+
+/** A ranger's decision on an engine detection signal. */
+export const resolveSignal = (simID: string, signalId: string, action: SignalAction) =>
+  request<{ status: string }>('/api/sim/stream/signal', { method: 'POST', body: JSON.stringify({ simID, signalId, action }) });
 
 // ---- WebSocket ------------------------------------------------------------------------------
 

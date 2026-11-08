@@ -10,7 +10,7 @@
  */
 import { create } from 'zustand';
 import type { CreateSimResponse, SimFrame } from './contract';
-import { BackendError, FrameSocket, createSim, startStream, stopStream, type SocketState } from './backendClient';
+import { BackendError, FrameSocket, createSim, resolveSignal, startStream, stopStream, type SocketState } from './backendClient';
 import { buildBackendSearch, frameFromWire, toPoint } from './backendAdapter';
 import { engineDriven, engineDroneTemplates, engineEnded, engineHandlers } from './engineRegistry';
 import { useAppStore } from '../store/appStore';
@@ -116,16 +116,17 @@ export async function createEngineSearch(input: CreateEngineSearchInput): Promis
   const app = useAppStore.getState();
   const drones = app.getAvailableDrones().slice(0, input.droneCount);
   if (!drones.length) throw new Error('No drones are free. Stand down another search first.');
-  const created = await createSim({ isReal: input.isReal, N: input.N, offset: input.offset, seed: input.seed, maxTimestep: input.maxTimestep, cellSize: input.cellSizeM });
+  // The engine flies these fleet drones (same ids), with their airframe specs
+  const specs = drones.map((d) => ({ id: d.id, cruiseSpeedMs: d.spec.cruiseSpeedMs, footprintM: d.spec.footprintM, basePod: d.spec.basePod, flightTimeMin: d.spec.flightTimeMin, battery: d.battery }));
+  const created = await createSim({ isReal: input.isReal, N: input.N, offset: input.offset, seed: input.seed, maxTimestep: input.maxTimestep, cellSize: input.cellSizeM, drones: specs });
   const n = app.missions.filter((m) => m.id.startsWith('E-')).length + 1;
   const missionId = `E-${String(n).padStart(3, '0')}`;
   const search = buildBackendSearch({ created, isReal: input.isReal, cellSizeM: input.cellSizeM, hoursMissing: input.hoursMissing, missionId, drones });
 
   engineDriven.add(missionId);
-  // The engine supplies the drones; local airframes only lend sensor specs and colours.
+  // The engine flies the drones; the local ones lend names and colours, and appear from the first frame.
   engineDroneTemplates.set(missionId, search.sim.drones);
   search.sim.drones = [];
-  search.mission.dronesAssigned = [];
   useAppStore.setState((st) => ({ reports: [search.report, ...st.reports] }));
   useAppStore.getState().registerMission(search.mission, search.env, search.sim);
   const start = toPoint(created.hiker.start);
@@ -211,6 +212,15 @@ async function onReset(missionId: string) {
 
 engineHandlers.start = (id, speed) => void launch(id, speed);
 engineHandlers.reset = (id) => void onReset(id);
+engineHandlers.signal = (id, signalId, action) => {
+  const link = useEngineLinks.getState().links[id];
+  if (!link || (link.status !== 'streaming' && link.status !== 'starting')) return;
+  resolveSignal(link.simID, signalId, action).catch((e) => patch(id, { error: errorText(e) }));
+};
+engineHandlers.standDown = (id) => {
+  const link = useEngineLinks.getState().links[id];
+  if (link && (link.status === 'streaming' || link.status === 'starting')) void stopEngineSearch(id);
+};
 
 /** Stop the engine stream for this search (DELETE /api/sim/stream). */
 export async function stopEngineSearch(missionId: string) {

@@ -10,6 +10,7 @@
  * backend stream that emits the same `SimState` contract.
  */
 import type { FleetDrone, SimDrone, Waypoint } from '../types/drone';
+import type { GridPoint } from '../types/terrain';
 import type { Mission } from '../types/mission';
 import type { AuctionRound, Bid, DetectionSignal, FieldReport, LogType, MissionEnvironment, SimEvent, SimState, SimStats } from '../types/simulation';
 import { Rng, hashString } from '../lib/rng';
@@ -815,30 +816,93 @@ export function warmUp(sim: SimState, env: MissionEnvironment, targetCoverage: n
 // External engine (backend) frames
 // ---------------------------------------------------------------------------------------------
 
-/** One engine frame in frontend coordinates (x = col, y = row; drone x/y are cell centres). */
+/** A drone in an engine frame, in frontend coordinates (x = col, y = row, continuous). */
+export interface EngineDrone {
+  id: string;
+  x: number;
+  y: number;
+  status?: SimDrone['status'];
+  objective?: string;
+  battery?: number;
+  heading?: number;
+  agl?: number;
+  currentBlock?: number;
+  queue?: number[];
+  path?: Waypoint[];
+  distanceM?: number;
+  cellsSearched?: number;
+  blocksCompleted?: number;
+  holdingSignalId?: string | null;
+  laps?: number;
+}
+
+export interface EngineAuction {
+  tick: number;
+  blockIndex: number;
+  blockId: string;
+  center: GridPoint;
+  expectedValue: number;
+  candidates: { blockId: string; blockIndex: number; value: number }[];
+  bids: Omit<Bid, 'color'>[];
+  winnerId: string | null;
+}
+
+export interface EngineSignal {
+  id: string;
+  droneId: string;
+  x: number;
+  y: number;
+  confidence: number;
+  tick: number;
+  isTrue: boolean;
+}
+
+export interface EngineEvent {
+  kind: string;
+  droneId?: string;
+  blockId?: string | null;
+  sector?: string | null;
+  signalId?: string;
+  battery?: number;
+}
+
+/** One engine frame in frontend coordinates. */
 export interface EngineFrame {
   tick: number;
   maxTimestep: number;
-  status: 'running' | 'finished' | 'stopped';
+  status: 'running' | 'finished' | 'stopped' | 'located';
   hiker: { x: number; y: number } | null;
-  drones: { id: string; x: number; y: number; laps?: number }[];
+  drones: EngineDrone[];
   /** Sim seconds since the start, on the engine's clock. */
   elapsedSec?: number;
   /** The engine's prior (row-major, sums to 1). Used instead of the local prior when present. */
   prior?: Float32Array | null;
+  /** Chance the hiker was missed per cell. When present the engine did the sensing. */
+  likelihood?: Float32Array | null;
+  blockOwner?: number[];
+  blockSearchCount?: number[];
+  /** Cells swept since the last frame: [flat index, drone index]. */
+  searched?: [number, number][];
+  auctions?: EngineAuction[];
+  signals?: EngineSignal[];
+  events?: EngineEvent[];
 }
 
 /**
- * Applies a frame from the backend engine. The engine owns the clock, the prior, and the hiker and
- * drone positions; this keeps everything the engine does not send yet (Bayesian coverage update,
- * sightings, ground-team timing, stats) consistent with those so every view renders as usual.
+ * Applies a frame from the backend engine. The engine owns the clock, the prior, the drones (flight,
+ * battery, auction, sweeps), the likelihood and detections; this mirrors them into SimState, turns
+ * engine events into the app's logs and alerts, and keeps what stays in the browser (ground teams,
+ * the ranger's decisions, stats) consistent so every view renders as usual. A frame without a
+ * likelihood (older engines) falls back to sensing locally under the engine's drone positions.
  */
 export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: EngineFrame, templates: SimDrone[] = prev.drones): SimState {
   const s: SimState = { ...prev, events: [] };
   const opts: StepOptions = { detection: true };
   const g = env.grid;
   const W = g.width;
-  const firstFrame = !prev.drones.length || !prev.drones.some((d) => d.objective.startsWith('Engine'));
+  // Tick 0 is the first frame of a run (also after a reset, when local drones are back at base)
+  const firstFrame = f.tick === 0 || !prev.drones.length;
+  const engineSensing = !!f.likelihood && f.likelihood.length === s.likelihood.length;
   const dt = Math.max(0, f.tick - prev.tick);
   s.tick = f.tick;
   s.elapsedSec = f.elapsedSec ?? f.tick * tickSecOf(env);
@@ -853,45 +917,79 @@ export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: Eng
       const hours = env.hoursMissingAtStart + s.elapsedSec / 3600;
       s.mobileHours = computePrior(env.travelTime, env.behavior, hours, s.prior, env.mobileScale);
     }
-    const relax = Math.pow(0.9985, dt);
-    const L = s.likelihood;
-    for (let i = 0; i < L.length; i++) if (L[i] < 1) L[i] = 1 - (1 - L[i]) * relax;
+    if (!engineSensing) {
+      const relax = Math.pow(0.9985, dt);
+      const L = s.likelihood;
+      for (let i = 0; i < L.length; i++) if (L[i] < 1) L[i] = 1 - (1 - L[i]) * relax;
+    }
   }
+  if (engineSensing) s.likelihood.set(f.likelihood!);
 
-  // Drones: keep identity per engine id; borrow airframe specs from the template airframes.
+  // Drones: the engine's state, with name, colour and airframe specs from the fleet drone of that id
   s.drones = f.drones.map((ed, k) => {
     const old = prev.drones.find((d) => d.id === ed.id);
-    const t = old ?? templates[k % templates.length];
+    const t = old ?? templates.find((x) => x.id === ed.id) ?? templates[k % templates.length];
     if (!t) throw new Error('applyEngineFrame needs at least one template drone');
     const px = old ? old.x : ed.x;
     const py = old ? old.y : ed.y;
     const step = Math.hypot(ed.x - px, ed.y - py);
+    const agl = ed.agl ?? 90;
+    const queue = ed.queue ?? [];
+    const currentBlock = ed.currentBlock ?? -1;
     const d: SimDrone = {
       ...t,
       id: ed.id,
-      name: old?.name ?? `Engine drone ${ed.id}`,
+      name: t.id === ed.id ? t.name : `Engine drone ${ed.id}`,
       fleetIndex: k,
-      status: f.status === 'running' ? 'searching' : 'standby',
+      status: ed.status ?? (f.status === 'running' ? 'searching' : 'standby'),
+      battery: ed.battery ?? t.battery,
       prevX: px,
       prevY: py,
       x: ed.x,
       y: ed.y,
-      heading: step > 0 ? ((Math.atan2(ed.x - px, -(ed.y - py)) * 180) / Math.PI + 360) % 360 : t.heading,
-      agl: 90,
-      altitude: g.elevation[Math.min(g.height - 1, Math.max(0, Math.floor(ed.y))) * W + Math.min(W - 1, Math.max(0, Math.floor(ed.x)))] + 90,
-      distanceM: (old?.distanceM ?? 0) + step * g.cellSizeM,
+      heading: ed.heading ?? (step > 0 ? ((Math.atan2(ed.x - px, -(ed.y - py)) * 180) / Math.PI + 360) % 360 : t.heading),
+      agl,
+      altitude: g.elevation[Math.min(g.height - 1, Math.max(0, Math.floor(ed.y))) * W + Math.min(W - 1, Math.max(0, Math.floor(ed.x)))] + agl,
+      distanceM: ed.distanceM ?? (old?.distanceM ?? 0) + step * g.cellSizeM,
       trail: [...(old?.trail ?? []), { x: ed.x, y: ed.y }].slice(-160),
-      objective: `Engine-controlled${ed.laps !== undefined ? ` · lap ${ed.laps + 1}` : ''}`,
-      queue: [],
-      currentBlock: -1,
-      path: [],
-      holdingSignalId: old?.holdingSignalId ?? null,
+      objective: ed.objective ?? `Engine-controlled${ed.laps !== undefined ? ` · lap ${ed.laps + 1}` : ''}`,
+      queue,
+      currentBlock,
+      path: ed.path ?? [],
+      assignedCells: [currentBlock, ...queue].filter((b) => b >= 0 && env.blocks[b]).map((b) => env.blocks[b].id),
+      holdingSignalId: ed.holdingSignalId !== undefined ? ed.holdingSignalId : (old?.holdingSignalId ?? null),
       passId: f.tick,
-      cellsSearched: old?.cellsSearched ?? 0,
+      cellsSearched: ed.cellsSearched ?? old?.cellsSearched ?? 0,
+      blocksCompleted: ed.blocksCompleted ?? old?.blocksCompleted ?? 0,
     };
-    observeAt(s, env, d, ed.x, ed.y, opts);
+    if (!engineSensing) observeAt(s, env, d, ed.x, ed.y, opts);
     return d;
   });
+
+  if (engineSensing) {
+    // Searched cells keep the drone that last swept them; assigned blocks show their drone
+    for (const [i, k] of f.searched ?? []) {
+      if (i < 0 || i >= s.cellStatus.length) continue;
+      s.cellStatus[i] = 2;
+      s.owner[i] = k;
+    }
+    if (f.blockOwner && f.blockOwner.length === s.blockOwner.length) {
+      for (const b of env.blocks) {
+        const o = f.blockOwner[b.index];
+        s.blockOwner[b.index] = o;
+        for (const c of b.cells) {
+          if (s.cellStatus[c] === 2) continue;
+          s.cellStatus[c] = o >= 0 ? 1 : 0;
+          s.owner[c] = o;
+        }
+      }
+    }
+    if (f.blockSearchCount && f.blockSearchCount.length === s.blockSearchCount.length) s.blockSearchCount.set(f.blockSearchCount);
+  }
+
+  applyEngineAuctions(s, f.auctions ?? []);
+  for (const sig of f.signals ?? []) if (!s.signals.some((x) => x.id === sig.id)) addEngineSignal(s, env, sig, opts);
+  for (const e of f.events ?? []) applyEngineEvent(s, e, opts);
 
   computePosterior(s.prior, s.likelihood, s.probability);
   for (const sig of s.signals) {
@@ -910,7 +1008,8 @@ export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: Eng
   if (f.status === 'running') {
     if (s.status !== 'complete') s.status = 'running';
   } else if (prev.status !== 'complete' && s.status !== 'complete') {
-    addLog(s, 'system', f.status === 'finished' ? `Engine run finished at timestep ${f.tick}` : `Engine stream stopped at timestep ${f.tick}`);
+    const ended = f.status === 'finished' ? `Engine run finished at timestep ${f.tick}` : f.status === 'located' ? `Engine run ended at timestep ${f.tick}: subject located` : `Engine stream stopped at timestep ${f.tick}`;
+    addLog(s, 'system', ended);
     // Keep running only while a sighting is still being worked, so the ground team can finish.
     const open = s.signals.some((x) => x.status === 'pending' || x.status === 'verifying' || x.status === 'on_scene');
     if (!open) {
@@ -921,6 +1020,115 @@ export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: Eng
   }
   s.version = prev.version + 1;
   return s;
+}
+
+/** Engine auction rounds → the app's AuctionRound records and auction log (first round per frame logged). */
+function applyEngineAuctions(s: SimState, rounds: EngineAuction[]) {
+  rounds.forEach((a, n) => {
+    const colorOf = (id: string) => s.drones.find((d) => d.id === id)?.color ?? '#888888';
+    const round: AuctionRound = {
+      id: ++s.auctionSeq,
+      tick: a.tick,
+      clock: clockStr(s),
+      blockIndex: a.blockIndex,
+      blockId: a.blockId,
+      center: a.center,
+      expectedValue: a.expectedValue,
+      candidates: a.candidates,
+      bids: a.bids.map((b) => ({ ...b, color: colorOf(b.droneId) })),
+      winnerId: a.winnerId,
+    };
+    s.auctions = [...s.auctions, round].slice(-30);
+    if (n > 0) return;
+    const entries = round.bids.map((bd) => ({ id: 0, clock: round.clock, kind: 'bid' as const, droneId: bd.droneId, message: `Drone ${bd.droneId} submitted bid ${bd.score.toFixed(1)} for cell ${a.blockId}` }));
+    if (a.winnerId) {
+      const win = round.bids.find((b) => b.droneId === a.winnerId);
+      entries.push({ id: 0, clock: round.clock, kind: 'win' as any, droneId: a.winnerId, message: `${a.winnerId} won cell ${a.blockId}` });
+      entries.push({ id: 0, clock: round.clock, kind: 'update' as any, droneId: a.winnerId, message: `Cell ownership updated — ${a.blockId} → ${a.winnerId}` });
+      addLog(s, 'auction', `${a.winnerId} won auction for ${a.blockId} · bid ${(win?.score ?? 0).toFixed(1)} vs ${round.bids.length - 1} other bid${round.bids.length === 2 ? '' : 's'}`, a.winnerId);
+    }
+    let seq = s.auctionLog.length ? s.auctionLog[s.auctionLog.length - 1].id : 0;
+    s.auctionLog = [...s.auctionLog, ...entries.map((e) => ({ ...e, id: ++seq }))].slice(-300);
+  });
+}
+
+/** A detection the engine raised becomes a pending signal for the ranger (same alert as local detections). */
+function addEngineSignal(s: SimState, env: MissionEnvironment, es: EngineSignal, opts: StepOptions) {
+  const sig: DetectionSignal = {
+    id: es.id,
+    droneId: es.droneId,
+    x: es.x,
+    y: es.y,
+    confidence: es.confidence,
+    tick: es.tick,
+    clock: clockStr(s),
+    status: 'pending',
+    isTrue: es.isTrue,
+    etaTick: null,
+    dispatchTick: null,
+    sensor: 'LWIR thermal + RGB',
+    fieldReport: null,
+  };
+  s.signals = [...s.signals, sig];
+  const cx = Math.floor(es.x);
+  const cy = Math.floor(es.y);
+  const b = env.blocks[Math.floor(cy / BLOCK) * env.blocksW + Math.floor(cx / BLOCK)];
+  addLog(s, 'detection', `Potential detection signal received — ${es.droneId} at cell (${cx}, ${cy}) · confidence ${(es.confidence * 100).toFixed(0)}% · ranger verification required`, es.droneId);
+  pushEvent(s, opts, {
+    kind: 'detection',
+    severity: 'critical',
+    title: 'Potential detection',
+    message: `${es.droneId} identified a possible human presence in ${b?.id ?? 'cell'} (sector ${b?.sector ?? '—'}). Confidence ${(es.confidence * 100).toFixed(0)}%. Ranger verification required.`,
+    x: sig.x,
+    y: sig.y,
+    droneId: es.droneId,
+    signalId: sig.id,
+    voice: `Potential human detected in sector ${b?.sector ?? ''}.`,
+  });
+}
+
+/** Engine drone events → the logs and alerts the local sim writes for the same moments. */
+function applyEngineEvent(s: SimState, e: EngineEvent, opts: StepOptions) {
+  const id = e.droneId ?? 'Drone';
+  switch (e.kind) {
+    case 'launch':
+      addLog(s, 'drone', `${id} launched from base`, id);
+      pushEvent(s, opts, { kind: 'launch', severity: 'info', title: `${id} launched`, message: `${id} airborne — climbing to search altitude`, droneId: id });
+      break;
+    case 'landed':
+      addLog(s, 'drone', `${id} landed — battery swap / charging`, id);
+      break;
+    case 'low_battery': {
+      const pct = Math.round(e.battery ?? 20);
+      addLog(s, 'warning', `${id} battery below 20% (${pct}%) — returning to base`, id);
+      pushEvent(s, opts, {
+        kind: 'low_battery',
+        severity: 'warning',
+        title: `${id} low battery`,
+        message: `${id} battery at ${pct}%. Return-to-base initiated; assigned cells released to auction.`,
+        droneId: id,
+        voice: `Drone ${spellId(id)} battery level is below twenty percent.`,
+      });
+      break;
+    }
+    case 'block_complete':
+      addLog(s, 'search', `Cell ${e.blockId} searched by ${id} (sector ${e.sector})`, id);
+      break;
+    case 'sector_complete':
+      if (!e.sector || s.sectorsComplete.includes(e.sector)) break;
+      s.sectorsComplete = [...s.sectorsComplete, e.sector];
+      addLog(s, 'search', `Sector ${e.sector} completed — probability redistributed`);
+      pushEvent(s, opts, {
+        kind: 'sector_complete',
+        severity: 'success',
+        title: `Sector ${e.sector} completed`,
+        message: `All blocks in sector ${e.sector} searched at least once. Probability mass redistributed to remaining areas.`,
+        droneId: id,
+        voice: `Drone ${spellId(id)} has completed its assigned search sector.`,
+      });
+      break;
+    // detection: handled from the frame's signals list
+  }
 }
 
 /** Thermal footprint pass at (px, py) for a drone not driven by the local auction. */
