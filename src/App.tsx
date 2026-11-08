@@ -6,6 +6,7 @@ import Drones from './pages/Drones';
 import MissingPersons from './pages/MissingPersons';
 import GroundTeam from './pages/GroundTeam';
 import Recovery from './pages/Recovery';
+import Backend from './pages/Backend';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="people" element={<MissingPersons />} />
           <Route path="ground" element={<GroundTeam />} />
           <Route path="recovery/:missionId" element={<Recovery />} />
+          <Route path="backend" element={<Backend />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

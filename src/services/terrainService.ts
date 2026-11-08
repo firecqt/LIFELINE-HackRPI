@@ -25,6 +25,14 @@ export function getTerrain(park: Park, seedKey: string, lkp: LatLon): TerrainGri
   return g;
 }
 
+/**
+ * Use an externally supplied grid (e.g. from the backend engine) for this park + key instead of
+ * generating one. Every consumer of `getTerrain` then renders the supplied data.
+ */
+export function registerTerrain(parkId: string, seedKey: string, grid: TerrainGrid): void {
+  cache.set(`${parkId}:${seedKey}`, grid);
+}
+
 const NEIGHBORS = [
   [1, 0, 1],
   [-1, 0, 1],

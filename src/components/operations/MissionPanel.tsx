@@ -21,6 +21,7 @@ import { STATUS_META } from '../../services/droneService';
 import { cellToLatLon } from '../../services/terrainService';
 import { BLOCK } from '../../services/missionService';
 import { formatElapsed, formatLatLon } from '../../lib/format';
+import { engineDriven } from '../../api/engineRegistry';
 
 type Tab = 'drones' | 'activity' | 'details';
 
@@ -141,14 +142,16 @@ function NextStep({ mission, session, onFocus }: { mission: Mission; session: Se
 
   if (phase === 'closed') return <Card tone="muted" icon={<Power size={18} />} kicker="Closed" title="This search was stood down" />;
 
+  const engine = engineDriven.has(id);
   if (phase === 'ready')
     return (
       <Card tone="accent" icon={<Rocket size={18} />} kicker="Next step" title="Launch the drones">
         <p className="text-[12.5px] text-ink/80">
-          The shaded area is where {first} is most likely to be. {sim.drones.length} drones will sweep the most likely spots first.
+          The shaded area is where {first} is most likely to be.{' '}
+          {engine ? 'The LIFELINE engine flies the drones; launching starts its run.' : `${sim.drones.length} drones will sweep the most likely spots first.`}
         </p>
         <button onClick={() => start(id)} className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-[13.5px] font-semibold text-white hover:brightness-110">
-          <Rocket size={15} /> Launch {sim.drones.length} drones
+          <Rocket size={15} /> {engine ? 'Launch engine run' : `Launch ${sim.drones.length} drones`}
         </button>
       </Card>
     );

@@ -289,3 +289,33 @@ export function drawFoundMarker(ctx: CanvasRenderingContext2D, x: number, y: num
   ctx.font = '500 10px "JetBrains Mono", monospace';
   ctx.fillText(sub, bx + 7, by + 26);
 }
+
+/** Hollow ring + label chip for a debug/reference position (e.g. the engine's hiker). */
+export function drawPin(ctx: CanvasRenderingContext2D, x: number, y: number, label: string, color: string) {
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.font = '600 10px "Inter Variable", Inter, sans-serif';
+  const w = ctx.measureText(label).width + 12;
+  const bx = x + 11;
+  const by = y - 9;
+  ctx.fillStyle = 'rgba(255,255,255,0.96)';
+  roundRect(ctx, bx, by, w, 18, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(16,24,40,0.15)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, bx + 6, by + 9.5);
+  ctx.textBaseline = 'alphabetic';
+}

@@ -13,7 +13,7 @@ import { Crosshair, Minus, Plus } from 'lucide-react';
 import type { GridPoint, MapOverlays, TerrainGrid, TerrainViewMode } from '../../types/terrain';
 import type { MissionEnvironment, SimState } from '../../types/simulation';
 import { getRaster } from './rasterizer';
-import { drawDrone, drawFoundMarker, drawLandmark, drawLkp, drawSignal, roundRect } from './drawing';
+import { drawDrone, drawFoundMarker, drawPin, drawLandmark, drawLkp, drawSignal, roundRect } from './drawing';
 import { contourPath } from '../../lib/contours';
 import { PROB_LUT, hexToRgb, rgba } from '../../lib/colors';
 import { tickTiming } from '../../hooks/tickTiming';
@@ -52,6 +52,8 @@ export interface TerrainMapProps {
   routes?: { points: GridPoint[]; color: string; width?: number; dashed?: boolean }[];
   /** "Found" pins drawn above everything else. */
   foundMarkers?: { x: number; y: number; title: string; sub: string }[];
+  /** Reference positions drawn as a ring + label (cell coordinates, centre = +0.5). */
+  pins?: { x: number; y: number; label: string; color: string }[];
   showGrid?: boolean;
   reducedMotion?: boolean;
   children?: ReactNode;
@@ -664,6 +666,7 @@ export default function TerrainMap(props: TerrainMapProps) {
     }
 
     for (const f of p.foundMarkers ?? []) drawFoundMarker(ctx, toSx(f.x), toSy(f.y), f.title, f.sub);
+    for (const pin of p.pins ?? []) drawPin(ctx, toSx(pin.x), toSy(pin.y), pin.label, pin.color);
 
     if (sim) {
       for (const sig of sim.signals) {

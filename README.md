@@ -45,12 +45,34 @@ npm run build      # type-check + production build
 | **Ground team** (`/ground`) | Field view: team ETA, the subject's profile next to what the team found, and the on-scene confirmation form |
 | **Drones** (`/drones`) | Live table of every drone: status, battery, position, mission, assigned cells and current task |
 | **Recovery** (`/recovery/:missionId`) | After confirmation: last known position, found position, likely travel corridor and fastest route |
+| **Backend link** (`/backend`) | Create a search from the engine in `/server` + `/engine`, launch its stream, and watch frames arrive |
 
 Every search moves through **Plan → Search → Verify → Found** and is never paused: it is either not started or actively searching. `src/lib/missionPhase.ts` derives
 the phase and the single "next action" that the sidebar, Overview and Search map all show.
 
 **Color meanings** are fixed app-wide: blue = actions / in progress, orange = the missing person,
 green = found / healthy, gold = waiting, rose = urgent, violet = search probability.
+
+### Running against the engine
+
+The frontend proxies `/_backend/*` (HTTP and WebSocket) to the Node server, default `http://localhost:3000`
+(override with `LIFELINE_API=http://host:port`).
+
+1. Start the engine and server as described in "How to run me" above (the server needs `MONGO_CONN` in `server/.env`).
+   On Windows, ZeroMQ has no `ipc://` transport, so set the same TCP addresses in both terminals first:
+   ```bash
+   export LIFELINE_IPC=tcp://127.0.0.1:5555 LIFELINE_IPC_EVENTS=tcp://127.0.0.1:5556
+   ```
+2. `npm run dev` here, open **Backend link**, then **Create and open on map** and **Launch engine run**.
+
+| Engine data | Where it shows up |
+|---|---|
+| `POST /api/sim` → elevation, canopy (1/2/3), hiker start/end | Terrain map (canopy 1 → open, 2 → trees, 3 → dense forest); start = last known position; probability map is computed from this terrain |
+| `WS /ws/sim/stream` frames → `tick`, `hiker.current`, `drones[].pos` | Engine tick = 20 s of search time; drones move on the map and in every panel; each drone pass lowers the probability under it; a pass over the hiker raises a sighting |
+
+The engine owns the clock for these searches. Sightings, the ground-team flow and recovery still run in the browser.
+Code: `src/api/contract.ts` (wire types), `backendClient.ts` (HTTP/WS), `backendAdapter.ts` (wire → app models),
+`backendLink.ts` (stream lifecycle), `simulationService.applyEngineFrame` (frame → `SimState`).
 
 ### Demo script
 

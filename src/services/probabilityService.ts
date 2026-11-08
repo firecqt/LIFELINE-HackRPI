@@ -54,7 +54,9 @@ export function computeTravelTime(grid: TerrainGrid, lkp: GridPoint, hikingSpeed
         const nt = t + dist / 1000 / Math.max(0.05, v);
         if (nt < T[j]) {
           T[j] = nt;
-          heap.push(j, nt);
+          // Push the stored (float32-rounded) value: pushing the float64 `nt` can make the
+          // stale-entry check `t > T[i]` true for the live entry and drop the cell entirely.
+          heap.push(j, T[j]);
         }
       }
   }

@@ -13,7 +13,8 @@ import { MOCK_HISTORY } from '../data/mockHistory';
 import { MOCK_ACTIVITY, type ActivityItem, type ActivityKind } from '../data/mockActivity';
 import { parkById } from '../data/mockParks';
 import { createEnvironment } from '../services/missionService';
-import { TICK_SEC, confirmSignal, createSimulation, dismissSignal, dispatchGroundTeam, standDown, stepSimulation, warmUp } from '../services/simulationService';
+import { TICK_SEC, confirmSignal, createSimulation, dismissSignal, dispatchGroundTeam, standDown, stepSimulation, tickGroundTeamOnly, warmUp } from '../services/simulationService';
+import { engineDriven, engineEnded, engineHandlers } from '../api/engineRegistry';
 import { availableDrones } from '../services/droneService';
 import { playDetectionAlert } from '../services/audioService';
 import { tickTiming } from '../hooks/tickTiming';
@@ -75,6 +76,8 @@ interface AppState {
   reset: (id: string) => void;
   setSpeed: (id: string, speed: number) => void;
   advance: (id: string, intervalMs: number) => void;
+  /** Commit a new SimState for a mission and raise alerts, activity and sound for its events. */
+  ingest: (id: string, sim: SimState) => void;
   dispatchGroundTeam: (id: string, signalId: string) => void;
   dismissSignal: (id: string, signalId: string) => void;
   /** Ground team's on-scene verdict for a signal (Ground Team view). */
@@ -186,7 +189,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCurrentMission: (id) => set({ currentMissionId: id }),
 
-  start: (id) => updateSim(set, get, id, (s) => ({ ...s, status: 'running', version: s.version + 1 })),
+  start: (id) => {
+    // Engine-driven searches start the backend stream; frames then set the sim running.
+    if (engineDriven.has(id) && engineHandlers.start) return engineHandlers.start(id, get().sessions[id]?.sim.speed ?? 1);
+    updateSim(set, get, id, (s) => ({ ...s, status: 'running', version: s.version + 1 }));
+  },
   pause: (id) => updateSim(set, get, id, (s) => (s.status === 'running' ? { ...s, status: 'paused', version: s.version + 1 } : s)),
   resume: (id) => updateSim(set, get, id, (s) => (s.status === 'paused' ? { ...s, status: 'running', version: s.version + 1 } : s)),
   setSpeed: (id, speed) => updateSim(set, get, id, (s) => ({ ...s, speed, version: s.version + 1 })),
@@ -198,14 +205,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sim = createSimulation(sess.env, mission, drones, sess.sim.clockBase);
     sim.speed = sess.sim.speed;
     set((st) => ({ sessions: { ...st.sessions, [id]: { env: sess.env, sim } } }));
+    if (engineDriven.has(id)) engineHandlers.reset?.(id);
   },
 
   advance: (id, intervalMs) => {
     const sess = get().sessions[id];
     if (!sess || sess.sim.status !== 'running') return;
+    if (engineDriven.has(id)) {
+      // The engine owns the clock; once it has stopped, only ground-team travel advances here.
+      if (!engineEnded.has(id)) return;
+      return get().ingest(id, tickGroundTeamOnly(sess.sim, sess.env));
+    }
     const sim = stepSimulation(sess.sim, sess.env, { detection: true });
     tickTiming.last = performance.now();
     tickTiming.interval = intervalMs;
+    get().ingest(id, sim);
+  },
+
+  ingest: (id, sim) => {
+    const sess = get().sessions[id];
+    if (!sess || sim === sess.sim) return;
     const events = sim.events;
     const settings = get().settings;
     const newAlerts: AlertItem[] = [];

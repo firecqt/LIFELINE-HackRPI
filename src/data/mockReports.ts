@@ -4,7 +4,7 @@ import type { MissingPersonReport } from '../types/mission';
 export const MOCK_REPORTS: MissingPersonReport[] = [
   {
     id: 'INC-26-1107-014',
-    name: 'Alex Morgan',
+    name: 'Jacob Hebbel',
     age: 34,
     sex: 'M',
     heightCm: 182,
@@ -31,7 +31,7 @@ export const MOCK_REPORTS: MissingPersonReport[] = [
   },
   {
     id: 'INC-26-1107-021',
-    name: 'Sarah Chen',
+    name: 'Samantha Steenbruggen',
     age: 27,
     sex: 'F',
     heightCm: 165,
@@ -58,9 +58,9 @@ export const MOCK_REPORTS: MissingPersonReport[] = [
   },
   {
     id: 'INC-26-1107-009',
-    name: 'James Wilson',
+    name: 'Aavan Vadiwala',
     age: 61,
-    sex: 'M',
+    sex: 'F',
     heightCm: 176,
     parkId: 'yellowstone',
     lkp: { latitude: 44.428, longitude: -110.5885 },
@@ -85,9 +85,9 @@ export const MOCK_REPORTS: MissingPersonReport[] = [
   },
   {
     id: 'INC-26-1107-027',
-    name: 'Maya Patel',
+    name: 'CJ Marino',
     age: 19,
-    sex: 'F',
+    sex: 'M',
     heightCm: 160,
     parkId: 'rocky',
     lkp: { latitude: 40.3428, longitude: -105.6836 },
@@ -112,9 +112,9 @@ export const MOCK_REPORTS: MissingPersonReport[] = [
   },
   {
     id: 'INC-26-1107-031',
-    name: 'Daniel Reyes',
+    name: 'Ghea Chaw',
     age: 45,
-    sex: 'M',
+    sex: 'F',
     heightCm: 179,
     parkId: 'yosemite',
     lkp: { latitude: 37.8651, longitude: -119.5383 },
@@ -139,9 +139,9 @@ export const MOCK_REPORTS: MissingPersonReport[] = [
   },
   {
     id: 'INC-26-1107-033',
-    name: 'Emma Lindqvist',
+    name: 'John Smith',
     age: 52,
-    sex: 'F',
+    sex: 'M',
     heightCm: 171,
     parkId: 'glacier',
     lkp: { latitude: 48.6966, longitude: -113.718 },
@@ -166,9 +166,9 @@ export const MOCK_REPORTS: MissingPersonReport[] = [
   },
   {
     id: 'INC-26-1103-002',
-    name: 'Tom Brennan',
+    name: 'Jane Doe',
     age: 70,
-    sex: 'M',
+    sex: 'F',
     heightCm: 174,
     parkId: 'yellowstone',
     lkp: { latitude: 44.6201, longitude: -110.5602 },

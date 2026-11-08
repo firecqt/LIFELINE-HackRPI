@@ -77,3 +77,10 @@ export const PARKS: Park[] = [
 ];
 
 export const parkById = (id: string) => PARKS.find((p) => p.id === id)!;
+
+/** Adds a park record at runtime (used for backend-generated test areas). */
+export function registerPark(park: Park): void {
+  const i = PARKS.findIndex((p) => p.id === park.id);
+  if (i >= 0) PARKS[i] = park;
+  else PARKS.push(park);
+}

@@ -4,6 +4,8 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { ToastStack } from '../alerts/NotificationCenter';
 import { useSimulationLoop } from '../../hooks/useSimulation';
+// Registers the engine start/reset handlers used by the store.
+import '../../api/backendLink';
 import { useAppStore } from '../../store/appStore';
 
 export default function AppShell() {

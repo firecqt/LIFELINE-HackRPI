@@ -807,3 +807,140 @@ export function warmUp(sim: SimState, env: MissionEnvironment, targetCoverage: n
   addLog(s, 'system', `Session resynchronized — ${s.tick} timesteps replayed from mission record`);
   return s;
 }
+
+// ---------------------------------------------------------------------------------------------
+// External engine (backend) frames
+// ---------------------------------------------------------------------------------------------
+
+/** One engine frame in frontend coordinates (x = col, y = row; drone x/y are cell centres). */
+export interface EngineFrame {
+  tick: number;
+  maxTimestep: number;
+  status: 'running' | 'finished' | 'stopped';
+  hiker: { x: number; y: number } | null;
+  drones: { id: string; x: number; y: number; laps?: number }[];
+}
+
+/**
+ * Applies a frame from the backend engine. The engine owns the clock, hiker and drone positions;
+ * this keeps everything the engine does not send yet (prior, Bayesian coverage update, sightings,
+ * ground-team timing, stats) consistent with those positions so every view renders as usual.
+ */
+export function applyEngineFrame(prev: SimState, env: MissionEnvironment, f: EngineFrame, templates: SimDrone[] = prev.drones): SimState {
+  const s: SimState = { ...prev, events: [] };
+  const opts: StepOptions = { detection: true };
+  const g = env.grid;
+  const W = g.width;
+  const firstFrame = !prev.drones.length || !prev.drones.some((d) => d.objective.startsWith('Engine'));
+  const dt = Math.max(0, f.tick - prev.tick);
+  s.tick = f.tick;
+  s.elapsedSec = f.tick * TICK_SEC;
+  if (f.hiker && f.hiker.x >= 0 && f.hiker.y >= 0 && f.hiker.x < W && f.hiker.y < g.height) s.hiker = { x: f.hiker.x, y: f.hiker.y };
+
+  if (dt > 0 || firstFrame) {
+    const hours = env.hoursMissingAtStart + s.elapsedSec / 3600;
+    s.mobileHours = computePrior(env.travelTime, env.behavior, hours, s.prior, env.mobileScale);
+    const relax = Math.pow(0.9985, dt);
+    const L = s.likelihood;
+    for (let i = 0; i < L.length; i++) if (L[i] < 1) L[i] = 1 - (1 - L[i]) * relax;
+  }
+
+  // Drones: keep identity per engine id; borrow airframe specs from the template airframes.
+  s.drones = f.drones.map((ed, k) => {
+    const old = prev.drones.find((d) => d.id === ed.id);
+    const t = old ?? templates[k % templates.length];
+    if (!t) throw new Error('applyEngineFrame needs at least one template drone');
+    const px = old ? old.x : ed.x;
+    const py = old ? old.y : ed.y;
+    const step = Math.hypot(ed.x - px, ed.y - py);
+    const d: SimDrone = {
+      ...t,
+      id: ed.id,
+      name: old?.name ?? `Engine drone ${ed.id}`,
+      fleetIndex: k,
+      status: f.status === 'running' ? 'searching' : 'standby',
+      prevX: px,
+      prevY: py,
+      x: ed.x,
+      y: ed.y,
+      heading: step > 0 ? ((Math.atan2(ed.x - px, -(ed.y - py)) * 180) / Math.PI + 360) % 360 : t.heading,
+      agl: 90,
+      altitude: g.elevation[Math.min(g.height - 1, Math.max(0, Math.floor(ed.y))) * W + Math.min(W - 1, Math.max(0, Math.floor(ed.x)))] + 90,
+      distanceM: (old?.distanceM ?? 0) + step * g.cellSizeM,
+      trail: [...(old?.trail ?? []), { x: ed.x, y: ed.y }].slice(-160),
+      objective: `Engine-controlled${ed.laps !== undefined ? ` · lap ${ed.laps + 1}` : ''}`,
+      queue: [],
+      currentBlock: -1,
+      path: [],
+      holdingSignalId: old?.holdingSignalId ?? null,
+      passId: f.tick,
+      cellsSearched: old?.cellsSearched ?? 0,
+    };
+    observeAt(s, env, d, ed.x, ed.y, opts);
+    return d;
+  });
+
+  computePosterior(s.prior, s.likelihood, s.probability);
+  for (const sig of s.signals) {
+    if (sig.status === 'verifying' && sig.etaTick !== null && s.tick >= sig.etaTick) groundTeamArrives(s, env, sig, opts);
+  }
+  s.stats = buildStats(env, s.prior, s.likelihood, s.probability, s.cellStatus, s.drones, s.mobileHours, s.blockSearchCount);
+  if (s.tick % HISTORY_EVERY === 0 || firstFrame) {
+    s.coverageHistory = [...s.coverageHistory, { minute: s.elapsedSec / 60, coverage: s.stats.coverage, unexplored: s.stats.unexploredMass, pos: s.stats.cumulativePos, peak: s.stats.peak.probability }];
+  }
+  if (s.tick > 0 && s.tick % SNAPSHOT_EVERY === 0) s.snapshots = [...s.snapshots, makeSnapshot(s.probability, W, g.height, s.elapsedSec, s.stats, s.stats.coverage)].slice(-240);
+
+  if (firstFrame) {
+    addLog(s, 'system', `Engine stream connected — ${f.drones.length} engine drone${f.drones.length === 1 ? '' : 's'}, ${f.maxTimestep} timesteps`);
+    pushEvent(s, opts, { kind: 'launch', severity: 'info', title: 'Engine stream started', message: `${f.drones.map((d) => d.id).join(', ') || 'No drones'} reporting from the engine.` });
+  }
+  if (f.status === 'running') {
+    if (s.status !== 'complete') s.status = 'running';
+  } else if (prev.status !== 'complete' && s.status !== 'complete') {
+    addLog(s, 'system', f.status === 'finished' ? `Engine run finished at timestep ${f.tick}` : `Engine stream stopped at timestep ${f.tick}`);
+    // Keep running only while a sighting is still being worked, so the ground team can finish.
+    const open = s.signals.some((x) => x.status === 'pending' || x.status === 'verifying' || x.status === 'on_scene');
+    if (!open) {
+      s.status = 'complete';
+      s.outcome = 'suspended';
+      pushEvent(s, opts, { kind: 'mission_complete', severity: 'info', title: 'Engine run ended', message: `The engine reached timestep ${f.tick} without a confirmed find.` });
+    }
+  }
+  s.version = prev.version + 1;
+  return s;
+}
+
+/** Thermal footprint pass at (px, py) for a drone not driven by the local auction. */
+function observeAt(s: SimState, env: MissionEnvironment, d: SimDrone, px: number, py: number, opts: StepOptions) {
+  const g = env.grid;
+  const W = g.width;
+  const r = d.footprint;
+  const hikerI = s.hiker.y * W + s.hiker.x;
+  for (let cy = Math.max(0, Math.floor(py - r)); cy <= Math.min(g.height - 1, Math.floor(py + r)); cy++)
+    for (let cx = Math.max(0, Math.floor(px - r)); cx <= Math.min(W - 1, Math.floor(px + r)); cx++) {
+      if ((cx + 0.5 - px) ** 2 + (cy + 0.5 - py) ** 2 > r * r) continue;
+      const i = cy * W + cx;
+      if (s.lastVisit[i] === d.passId) continue;
+      s.lastVisit[i] = d.passId;
+      const pod = cellPod(d.basePod, g.vegetationDensity[i]);
+      s.likelihood[i] *= 1 - pod;
+      s.cellStatus[i] = 2;
+      s.owner[i] = d.fleetIndex;
+      d.cellsSearched++;
+      const open = s.signals.some((x) => x.isTrue && x.status !== 'dismissed' && x.status !== 'false_positive');
+      if (i === hikerI && !open && !d.holdingSignalId && s.rng.next() < Math.max(pod, 0.55)) raiseSignal(s, env, d, cx, cy, true, opts);
+    }
+}
+
+/** After the engine stops, advance only the local clock for ground-team travel to a sighting. */
+export function tickGroundTeamOnly(prev: SimState, env: MissionEnvironment): SimState {
+  if (prev.status !== 'running') return prev;
+  const s: SimState = { ...prev, events: [] };
+  s.tick += 1;
+  s.elapsedSec += TICK_SEC;
+  for (const sig of s.signals) {
+    if (sig.status === 'verifying' && sig.etaTick !== null && s.tick >= sig.etaTick) groundTeamArrives(s, env, sig, { detection: false });
+  }
+  s.version = prev.version + 1;
+  return s;
+}

@@ -25,6 +25,7 @@ import { TICK_SEC } from '../services/simulationService';
 import { PHASE_META, missionPhase } from '../lib/missionPhase';
 import { formatDuration, formatLatLon } from '../lib/format';
 import { VEGETATION_LABELS } from '../types/terrain';
+import { useEngineLinks, type EngineLink, type LinkStatus } from '../api/backendLink';
 
 export default function MapPage() {
   const params = useParams();
@@ -66,6 +67,8 @@ function Workspace({ missionId }: { missionId: string }) {
   const [legendOpen, setLegendOpen] = useState(true);
   const [panelOpen, setPanelOpen] = useState(true);
   const [focus, setFocus] = useState<MapFocus | null>(null);
+  const link = useEngineLinks((s) => s.links[missionId]);
+  const [showEngineHiker, setShowEngineHiker] = useState(true);
 
   const sim = session!.sim;
   const env = session!.env;
@@ -149,6 +152,8 @@ function Workspace({ missionId }: { missionId: string }) {
             fitBounds={fitBounds}
             showGrid={overlays.grid}
             showMinimap={false}
+            routes={link && showEngineHiker && link.trail.length > 1 ? [{ points: link.trail.map((p) => ({ x: p.x + 0.5, y: p.y + 0.5 })), color: '#101828', width: 2, dashed: true }] : undefined}
+            pins={link && showEngineHiker && link.trail.length ? [{ x: link.trail[link.trail.length - 1].x + 0.5, y: link.trail[link.trail.length - 1].y + 0.5, label: `Engine hiker · t${link.tick}`, color: '#101828' }] : undefined}
           >
             <MissionCard mission={mission} session={session!} />
 
@@ -156,6 +161,8 @@ function Workspace({ missionId }: { missionId: string }) {
               <ViewModeSwitch mode={mode} onChange={setMode} />
               <LayerMenu overlays={overlays} onChange={setOverlays} opacity={settings.heatmapOpacity} onOpacity={(v) => updateSettings({ heatmapOpacity: v })} />
             </div>
+
+            {link && <EngineChip link={link} show={showEngineHiker} onShow={setShowEngineHiker} />}
 
             {timelineIdx !== null && (
               <div className="absolute left-1/2 top-[68px] z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-warn px-4 py-1.5 text-[12px] font-medium text-white shadow-float">
@@ -211,6 +218,29 @@ function Workspace({ missionId }: { missionId: string }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** Data-link status for searches created from the backend engine (Backend link page). */
+const LINK_LABEL: Record<LinkStatus, string> = { ready: 'Ready to launch', starting: 'Starting', streaming: 'Streaming', finished: 'Run finished', stopped: 'Stopped', replaced: 'Replaced by another search', error: 'Link error' };
+
+function EngineChip({ link, show, onShow }: { link: EngineLink; show: boolean; onShow: (v: boolean) => void }) {
+  const navigate = useNavigate();
+  const color = link.status === 'error' ? '#E5364B' : link.status === 'streaming' ? '#0E9F6E' : link.status === 'starting' ? '#C88A04' : '#5F6B7D';
+  return (
+    <div className="absolute left-[324px] top-[64px] z-20 flex items-center gap-3 rounded-lg border border-line bg-panel/95 px-3 py-1.5 text-[12px] shadow-float backdrop-blur">
+      <button onClick={() => navigate('/backend')} className="flex items-center gap-1.5 font-medium text-ink hover:text-accent" title={link.error ?? `Simulation ${link.simID}`}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+        Engine · {LINK_LABEL[link.status]}
+      </button>
+      <span className="tabular-nums text-muted">
+        tick {link.tick}/{link.params.maxTimestep}
+      </span>
+      <label className="flex cursor-pointer items-center gap-1.5 border-l border-line pl-3 text-muted">
+        <input type="checkbox" checked={show} onChange={(e) => onShow(e.target.checked)} className="accent-accent" />
+        Show engine hiker
+      </label>
     </div>
   );
 }

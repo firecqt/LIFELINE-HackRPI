@@ -13,6 +13,7 @@ const TITLES: [string, string][] = [
   ['/people', 'Missing persons'],
   ['/ground', 'Ground team'],
   ['/recovery', 'Recovery'],
+  ['/backend', 'Backend link'],
   ['/', 'Overview'],
 ];
 
