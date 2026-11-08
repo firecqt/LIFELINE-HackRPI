@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIFELINE Environment</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --danger: #d03b3b;
+    /* elevation: sequential blue 100 -> 700 */
+    --elev-ramp: #cde2fb, #b7d3f6, #9ec5f4, #86b6ef, #6da7ec, #5598e7, #3987e5, #2a78d6, #256abf, #1c5cab, #184f95, #104281, #0d366b;
+    /* canopy: ordinal green, none -> low -> high interference (validated both modes) */
+    --canopy-1: #7dbd7b;
+    --canopy-2: #3f9a45;
+    --canopy-3: #1d5e2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--ink-2); margin: 0 0 20px; }
+
+  form {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: end;
+    margin-bottom: 8px;
+  }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  input {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; width: 110px;
+  }
+  input#simID { width: 300px; max-width: 100%; }
+  button {
+    font: inherit; font-weight: 600; color: #fff; background: var(--accent);
+    border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  .divider { width: 1px; align-self: stretch; background: var(--border); }
+  #status { min-height: 20px; color: var(--ink-2); font-size: 13px; margin: 0 0 16px; }
+  #status.error { color: var(--danger); }
+  code { font-size: 12px; }
+
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; min-width: 0;
+  }
+  .card h2 { font-size: 15px; margin: 0; }
+  .card .note { color: var(--muted); font-size: 12px; margin: 2px 0 12px; }
+  .plot { position: relative; width: 100%; aspect-ratio: 1; }
+  .plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .plot .empty {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; text-align: center; padding: 16px;
+  }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 12px; font-size: 12px; color: var(--ink-2); }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; }
+  .gradient { display: grid; grid-template-columns: auto 120px auto; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
+  .gradient .bar { height: 10px; border-radius: 3px; background: linear-gradient(to right, var(--elev-ramp)); }
+  .marker-key { width: 14px; height: 14px; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  #tooltip .k { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<main>
+  <h1>LIFELINE environment</h1>
+  <p class="sub">Terrain and canopy for a simulation, with the hiker's start and end positions.</p>
+
+  <form id="create">
+    <label>Grid size N <input id="N" type="number" min="1" max="1024" value="64" required></label>
+    <label>Seed (optional) <input id="seed" type="number" min="0" placeholder="random"></label>
+    <button type="submit">Generate fake sim</button>
+    <div class="divider"></div>
+    <label>Or load existing sim ID <input id="simID" placeholder="uuid"></label>
+    <button type="button" class="secondary" id="load">Load</button>
+  </form>
+  <p id="status"></p>
+
+  <div class="charts">
+    <section class="card">
+      <h2>Terrain elevation</h2>
+      <p class="note" id="elev-note">Row 0 at top, column 0 at left</p>
+      <div class="plot" id="elev-plot">
+        <canvas></canvas>
+        <div class="empty">Generate or load a simulation</div>
+      </div>
+      <div class="legend">
+        <span class="gradient"><span id="elev-min">low</span><span class="bar"></span><span id="elev-max">high</span></span>
+        <span class="item"><svg class="marker-key" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="currentColor" stroke="var(--surface)" stroke-width="2"/></svg>Start</span>
+        <span class="item"><svg class="marker-key" viewBox="0 0 14 14"><path d="M7 1.5 12.5 7 7 12.5 1.5 7Z" fill="currentColor" stroke="var(--surface)" stroke-width="2"/></svg>End</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Canopy cover</h2>
+      <p class="note">How much foliage blocks the drone camera</p>
+      <div class="plot" id="canopy-plot">
+        <canvas></canvas>
+        <div class="empty">Generate or load a simulation</div>
+      </div>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background: var(--canopy-1)"></span>No interference</span>
+        <span class="item"><span class="swatch" style="background: var(--canopy-2)"></span>Low</span>
+        <span class="item"><span class="swatch" style="background: var(--canopy-3)"></span>High</span>
+        <span class="item"><svg class="marker-key" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="currentColor" stroke="var(--surface)" stroke-width="2"/></svg>Start</span>
+        <span class="item"><svg class="marker-key" viewBox="0 0 14 14"><path d="M7 1.5 12.5 7 7 12.5 1.5 7Z" fill="currentColor" stroke="var(--surface)" stroke-width="2"/></svg>End</span>
+      </div>
+    </section>
+  </div>
+</main>
+<div id="tooltip"></div>
+
+<script>
+// Same origin as the Express server; set e.g. 'http://localhost:3000' if served elsewhere
+const API = '';
+
+const CANOPY_LABELS = { 1: 'No interference', 2: 'Low interference', 3: 'High interference' };
+
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+const hexToRgb = (hex) => {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+let state = null;          // { simID, elevation, canopy, hiker, elevRange }
+let hoverCell = null;      // [row, col] shared by both charts
+
+// ---------------------------------- data ----------------------------------
+
+async function api(path, options) {
+  const res = await fetch(API + path, options);
+  const body = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error ?? `${res.status} ${res.statusText}`);
+  return body;
+}
+
+async function loadSim(simID) {
+  setStatus(`Loading ${simID}…`);
+  const [elevation, canopy, hiker] = await Promise.all([
+    api(`/elevations/${simID}`),
+    api(`/canopies/${simID}`),
+    api(`/hiker/${simID}`),
+  ]);
+
+  let min = Infinity, max = -Infinity;
+  for (const v of elevation.data) { if (v < min) min = v; if (v > max) max = v; }
+
+  state = { simID, elevation, canopy, hiker, elevRange: [min, max] };
+  $('simID').value = simID;
+  history.replaceState(null, '', `#${simID}`);
+  $('elev-min').textContent = `${Math.round(min)} m`;
+  $('elev-max').textContent = `${Math.round(max)} m`;
+  $('elev-note').textContent = `${elevation.dims[0]}×${elevation.dims[1]} cells · row 0 at top, column 0 at left`;
+  document.querySelectorAll('.plot .empty').forEach((el) => el.remove());
+  setStatus(`Sim ${simID} · hiker start [${hiker.start}] → end [${hiker.end}]`);
+  drawAll();
+}
+
+function setStatus(msg, isError = false) {
+  $('status').textContent = msg;
+  $('status').className = isError ? 'error' : '';
+}
+
+async function run(fn) {
+  const buttons = document.querySelectorAll('button');
+  buttons.forEach((b) => (b.disabled = true));
+  try { await fn(); }
+  catch (err) { setStatus(err.message, true); }
+  finally { buttons.forEach((b) => (b.disabled = false)); }
+}
+
+$('create').addEventListener('submit', (e) => {
+  e.preventDefault();
+  run(async () => {
+    const body = { N: Number($('N').value) };
+    if ($('seed').value !== '') body.seed = Number($('seed').value);
+    setStatus('Generating…');
+    const sim = await api('/simulations?type=fake', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await loadSim(sim.simID);
+  });
+});
+
+$('load').addEventListener('click', () => {
+  const id = $('simID').value.trim();
+  if (id) run(() => loadSim(id));
+});
+
+// ---------------------------------- drawing ----------------------------------
+
+// Continuous colour from the elevation ramp (light = low, dark = high)
+function elevationColor(t, ramp) {
+  const x = Math.min(Math.max(t, 0), 1) * (ramp.length - 1);
+  const i = Math.min(Math.floor(x), ramp.length - 2);
+  const f = x - i;
+  return ramp[i].map((c, k) => Math.round(c + (ramp[i + 1][k] - c) * f));
+}
+
+// Paints the grid at 1 pixel per cell, then the browser scales it up without smoothing
+function gridImage(rows, cols, colorAt) {
+  const off = document.createElement('canvas');
+  off.width = cols; off.height = rows;
+  const ctx = off.getContext('2d');
+  const img = ctx.createImageData(cols, rows);
+  for (let i = 0; i < rows * cols; i++) {
+    const [r, g, b] = colorAt(i);
+    img.data.set([r, g, b, 255], i * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  return off;
+}
+
+function setupCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, size: rect.width };
+}
+
+function drawPlot(plotId, grid, colorAt) {
+  const canvas = document.querySelector(`#${plotId} canvas`);
+  const { ctx, size } = setupCanvas(canvas);
+  const [rows, cols] = grid.dims;
+  const cell = size / cols;
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(gridImage(rows, cols, colorAt), 0, 0, size, size);
+
+  // Hovered cell outline (linked across both charts)
+  if (hoverCell) {
+    const [r, c] = hoverCell;
+    ctx.strokeStyle = css('--ink');
+    ctx.lineWidth = 2;
+    ctx.strokeRect(c * cell, r * cell, Math.max(cell, 2), Math.max(cell, 2));
+  }
+
+  drawMarker(ctx, state.hiker.start, cell, size, 'circle', 'Start');
+  drawMarker(ctx, state.hiker.end, cell, size, 'diamond', 'End');
+}
+
+function drawMarker(ctx, [row, col], cell, size, shape, label) {
+  const x = (col + 0.5) * cell;
+  const y = (row + 0.5) * cell;
+  const r = Math.max(6, Math.min(cell * 0.6, 10));
+  const ink = css('--ink');
+  const surface = css('--surface');
+
+  ctx.beginPath();
+  if (shape === 'circle') ctx.arc(x, y, r, 0, Math.PI * 2);
+  else { ctx.moveTo(x, y - r * 1.2); ctx.lineTo(x + r * 1.2, y); ctx.lineTo(x, y + r * 1.2); ctx.lineTo(x - r * 1.2, y); ctx.closePath(); }
+  ctx.fillStyle = ink;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = surface;
+  ctx.stroke();
+
+  // Label with a surface halo so it reads on any cell colour; flip side near the right edge
+  ctx.font = '600 12px system-ui, -apple-system, "Segoe UI", sans-serif';
+  const w = ctx.measureText(label).width;
+  const onLeft = x + r + 6 + w > size - 4;
+  const lx = onLeft ? x - r - 6 - w : x + r + 6;
+  const ly = Math.min(Math.max(y + 4, 14), size - 4);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = surface;
+  ctx.strokeText(label, lx, ly);
+  ctx.fillStyle = ink;
+  ctx.fillText(label, lx, ly);
+}
+
+function drawAll() {
+  if (!state) return;
+  const ramp = css('--elev-ramp').split(',').map((s) => hexToRgb(s.trim()));
+  const [min, max] = state.elevRange;
+  const span = max - min || 1;
+  drawPlot('elev-plot', state.elevation, (i) => elevationColor((state.elevation.data[i] - min) / span, ramp));
+
+  const canopyColors = { 1: hexToRgb(css('--canopy-1')), 2: hexToRgb(css('--canopy-2')), 3: hexToRgb(css('--canopy-3')) };
+  drawPlot('canopy-plot', state.canopy, (i) => canopyColors[state.canopy.data[i]]);
+}
+
+// ---------------------------------- hover ----------------------------------
+
+const tooltip = $('tooltip');
+
+function onMove(e) {
+  if (!state) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const [rows, cols] = state.elevation.dims;
+  const col = Math.floor(((e.clientX - rect.left) / rect.width) * cols);
+  const row = Math.floor(((e.clientY - rect.top) / rect.height) * rows);
+  if (row < 0 || col < 0 || row >= rows || col >= cols) return onLeave();
+
+  if (!hoverCell || hoverCell[0] !== row || hoverCell[1] !== col) {
+    hoverCell = [row, col];
+    drawAll();
+  }
+
+  const i = row * cols + col;
+  const at = (p) => p[0] === row && p[1] === col;
+  const tags = [at(state.hiker.start) && 'Hiker start', at(state.hiker.end) && 'Hiker end'].filter(Boolean);
+  tooltip.innerHTML =
+    `<div><span class="k">Cell</span> [${row}, ${col}]</div>` +
+    `<div><span class="k">Elevation</span> ${state.elevation.data[i].toFixed(1)} m</div>` +
+    `<div><span class="k">Canopy</span> ${CANOPY_LABELS[state.canopy.data[i]]}</div>` +
+    (tags.length ? `<div><strong>${tags.join(', ')}</strong></div>` : '');
+  tooltip.style.display = 'block';
+
+  // Keep the tooltip on screen
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  const x = e.clientX + 14 + tw > innerWidth ? e.clientX - 14 - tw : e.clientX + 14;
+  const y = e.clientY + 14 + th > innerHeight ? e.clientY - 14 - th : e.clientY + 14;
+  tooltip.style.left = `${x}px`;
+  tooltip.style.top = `${y}px`;
+}
+
+function onLeave() {
+  tooltip.style.display = 'none';
+  if (hoverCell) { hoverCell = null; drawAll(); }
+}
+
+document.querySelectorAll('.plot').forEach((plot) => {
+  plot.addEventListener('pointermove', onMove);
+  plot.addEventListener('pointerleave', onLeave);
+});
+
+// Redraw on resize and on light/dark switches
+new ResizeObserver(() => drawAll()).observe(document.querySelector('.charts'));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+
+// Reopen the sim in the URL hash (sims live in server memory, so this fails after a server restart)
+if (location.hash.length > 1) run(() => loadSim(location.hash.slice(1)));
+</script>
+</body>
+</html>
