@@ -1,4 +1,24 @@
-# LIFELINE — SAR Drone Command Center (frontend prototype)
+# LIFELINE
+### Contributors: Sam S, Jacob H
+
+## What is LIFELINE?
+Every day, hikers go missing. The probability of finding a missing hiker dramatically decreases after 24 hours, showing a need for an efficient search strategy. Current strategies are limited by equipment, finances, and manpower. To fix this, LIFELINE proposes a cost-effective unmanned search strategy invovling a coordinated drone swarm. By using a terrain-derived bayesian prior of the park, drones work together to optimally explore. Our rough estimates indicate an exponential speedup in search time, growing logarithmically with drone count, perimeter size, and the prevalence of sensor-interfering canopy coverage.
+
+## Why is LIFELINE efficient?
+LIFELINE makes extensive use of **Lost Person Behavior** research, which combines environmental features with human psychology to produce analytical models about movement. LIFELINE's movement model combines Koester rings with elevation change to produce a **Probability Density Function** over the region. Armed with this prior, drones have an information advantage that allows them to explore the world.
+
+## Why is LIFELINE effective?
+LIFELINE isn't just fast, but also considers real-world constraints, such as flight trajectory, search assignment, entropy reduction, and sensor occlusion. A comprehensive probability model is used, which embraces false negatives and Probability of Detection approaches to write a fault-first perspective.
+
+## How to run me
+1. go to `/server` and do npm install
+2. go to `/engine` and make a virtual environment named `.venv`
+3. activate the venv then install from requirements.txt
+4. in that same terminal, run `python api.py`
+5. in a different terminal, go to `/server`
+6. run `npm run dev` in that terminal
+
+## Frontend — SAR drone command center (prototype)
 
 LIFELINE is an interactive search-and-rescue command center that shows how autonomous drones,
 terrain analysis and probabilistic search modeling can help park rangers find a missing hiker.
@@ -7,7 +27,7 @@ terrain analysis and probabilistic search modeling can help park rangers find a 
 terrain datasets or drone links. Every number shown is produced by a deterministic local simulation
 and is labeled **SIMULATED** in the UI.
 
-## Run
+### Run
 
 ```bash
 npm install
@@ -15,7 +35,7 @@ npm run dev        # http://localhost:5173
 npm run build      # type-check + production build
 ```
 
-## Pages
+### Pages
 
 | Page | What it shows |
 |---|---|
@@ -32,7 +52,7 @@ the phase and the single "next action" that the sidebar, Overview and Search map
 **Color meanings** are fixed app-wide: blue = actions / in progress, orange = the missing person,
 green = found / healthy, gold = waiting, rose = urgent, violet = search probability.
 
-## Demo script
+### Demo script
 
 1. **Overview** → **Start search** on a new report (or **Missing persons** → pick a *New* report → **Start search**).
 2. **Search map**: press **Launch drones**, then set the speed to 5× or 10×. Switch base maps and toggle
@@ -50,7 +70,7 @@ green = found / healthy, gold = waiting, rose = urgent, violet = search probabil
 
 Audio is limited to the detection alert and can be muted from the top bar.
 
-## Architecture
+### Architecture
 
 ```
 src/
@@ -73,7 +93,7 @@ src/
   pages/                 Overview (dashboard), MapPage, Drones, MissingPersons
 ```
 
-### Rendering vs. simulation
+#### Rendering vs. simulation
 
 Rendering and simulation are kept separate:
 
@@ -84,7 +104,7 @@ Rendering and simulation are kept separate:
   updated only when the simulation version changes.
 - Drones are interpolated between ticks inside the animation loop.
 
-### Replacing mock data
+#### Replacing mock data
 
 | Replace | With | Contract |
 |---|---|---|
@@ -93,7 +113,7 @@ Rendering and simulation are kept separate:
 | `simulationService.stepSimulation` | telemetry / planner stream | `SimState`, `Drone` |
 | `data/*` | mission & report APIs | `Mission`, `MissingPersonReport` |
 
-### Model notes (illustrative only)
+#### Model notes (illustrative only)
 
 - **Travel time** from the last known position (LKP) is a Dijkstra search using Tobler's hiking
   function `v = 6·exp(−3.5·|tanθ + 0.05|)`, with vegetation drag, a trail bonus, slow river

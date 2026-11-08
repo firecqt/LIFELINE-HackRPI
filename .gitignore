@@ -3,3 +3,6 @@ dist
 *.local
 .vite
 *.tsbuildinfo
+*.env
+.venv
+__pycache__
