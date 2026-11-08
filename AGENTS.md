@@ -32,5 +32,8 @@ All REST endpoints use /api as a prefix. The API is intentionally minimal and su
 ### Step 6: Create a (fake) simulation class
 A simulation takes some hyperparameters and bootstraps itself. It constructs the environment state like elevations and canopy. It initializes the hiker agent and drone agent(s). It has a step function that updates agents sequentially. Eventually it should support sending a simulation frame that can be put onto a websocket stream.  
 
-### Step 7: One Simple Drone Agent
-This is an agent that visits the hiker's LKP (start) then the hiker's found position (end) then returns to 0,0. It can be hard coded. 
+### Step 7: Give the hiker agent a simple random walk
+Use a mixture of current momentum and downhill descent (bound it simply) to randomly walk towards the found location. Add pauses to simulate it following a standard ISRID Koenser ring.
+
+### Step 8: Implement a PDF based on the Koenser rings
+This should be a matrix where a cell is a float. It should be passable to agents.

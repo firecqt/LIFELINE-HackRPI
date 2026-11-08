@@ -96,25 +96,30 @@ def derived_seeds(seed: int) -> dict:
     return {"elevation": int(elevation), "canopy": int(canopy), "hiker": int(hiker)}
 
 
-def make_hiker_fake(N: int, seed: int) -> dict:
+def make_lkp_fake(N: int) -> list[int]:
     '''
-    Hiker start (last known position) and end (found position) as [row, col], 0-based.
+    Hiker's last known position (LKP) as [row, col], 0-based: always the centre of the grid, so
+    the walk is least likely to reach the border. Where the hiker goes from there is simulated by
+    agents.Hiker.
     '''
-    rng = np.random.default_rng(derived_seeds(seed)["hiker"])
-    return {
-        "start": rng.integers(0, N, size=2).tolist(),
-        "end": rng.integers(0, N, size=2).tolist(),
-    }
+    return [N // 2, N // 2]
+
+
+# Fake terrain amplitude as a fraction of the grid's side length: +-10m over 300m keeps slopes
+# walkable (median ~23%) whatever N and cell size are
+RELIEF_RATIO = 1 / 30
 
 
 @lru_cache(maxsize=8)
-def build_grid(field: str, N: int, offset: float, seed: int) -> np.ndarray:
+def build_grid(field: str, N: int, offset: float, seed: int, cell_size: float) -> np.ndarray:
     '''
     Deterministically rebuild one environment grid from a sim's hyperparameters.
     Cached so a sim that is created and then streamed only builds its grids once.
     '''
     seeds = derived_seeds(seed)
     match field:
-        case "elevation": return make_elevation_fake(N, offset=offset, seed=seeds["elevation"])
+        case "elevation":
+            amplitude = RELIEF_RATIO * N * cell_size
+            return make_elevation_fake(N, offset=offset, amplitude=amplitude, seed=seeds["elevation"])
         case "canopy": return make_foilage_fake(N, seed=seeds["canopy"])
         case _: raise ValueError(f"Unknown environment field {field}")
