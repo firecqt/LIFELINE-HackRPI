@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f3f5f9;
+  color: #101828;
+  font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd3df transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cbd3df;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+input[type='range'] {
+  accent-color: #2556e8;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-grid {
+  background-image: linear-gradient(rgba(16, 24, 40, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 24, 40, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.recharts-cartesian-grid line {
+  stroke: #e6ebf2;
+}
+.recharts-text {
+  fill: #5f6b7d;
+  font-size: 10px;
+}
+.recharts-default-tooltip {
+  background: #ffffff !important;
+  border: 1px solid #e1e6ee !important;
+  border-radius: 8px;
+  font-size: 11px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
