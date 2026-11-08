@@ -116,7 +116,7 @@ export async function createEngineSearch(input: CreateEngineSearchInput): Promis
   const app = useAppStore.getState();
   const drones = app.getAvailableDrones().slice(0, input.droneCount);
   if (!drones.length) throw new Error('No drones are free. Stand down another search first.');
-  const created = await createSim({ isReal: input.isReal, N: input.N, offset: input.offset, seed: input.seed, maxTimestep: input.maxTimestep });
+  const created = await createSim({ isReal: input.isReal, N: input.N, offset: input.offset, seed: input.seed, maxTimestep: input.maxTimestep, cellSize: input.cellSizeM });
   const n = app.missions.filter((m) => m.id.startsWith('E-')).length + 1;
   const missionId = `E-${String(n).padStart(3, '0')}`;
   const search = buildBackendSearch({ created, isReal: input.isReal, cellSizeM: input.cellSizeM, hoursMissing: input.hoursMissing, missionId, drones });

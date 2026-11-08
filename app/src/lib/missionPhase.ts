@@ -5,7 +5,7 @@
 import type { Mission } from '../types/mission';
 import type { DetectionSignal } from '../types/simulation';
 import type { Session } from '../store/appStore';
-import { TICK_SEC } from '../services/simulationService';
+import { tickSecOf } from '../services/simulationService';
 
 export type Phase = 'ready' | 'searching' | 'review' | 'en_route' | 'on_scene' | 'found' | 'closed';
 
@@ -42,7 +42,7 @@ export function activeSignal(sess?: Session | null): DetectionSignal | null {
 }
 
 export function teamEtaMinutes(sess: Session, sig: DetectionSignal): number {
-  return Math.max(0, Math.round((((sig.etaTick ?? sess.sim.tick) - sess.sim.tick) * TICK_SEC) / 60));
+  return Math.max(0, Math.round((((sig.etaTick ?? sess.sim.tick) - sess.sim.tick) * tickSecOf(sess.env)) / 60));
 }
 
 export interface NextAction {

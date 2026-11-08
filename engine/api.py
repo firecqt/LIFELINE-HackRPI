@@ -4,7 +4,9 @@ import os
 import numpy as np
 import zmq
 
-from environment import build_grid, make_hiker_fake, make_perimeter_fake
+from environment import build_grid, make_perimeter_fake
+from prior import static_layers
+from simulation import TICK_SECONDS, Simulation
 from stream import StreamManager
 
 # Commands from Node (REQ/REP) and frames to Node (PUB/SUB)
@@ -20,27 +22,34 @@ def grid_payload(arr: np.ndarray, decimals: int | None = None) -> dict:
     return {"data": flat.tolist(), "dims": list(arr.shape)}
 
 
-def read_params(value: dict) -> tuple[int, float, int]:
-    return int(value["N"]), value.get("offset", 1000), int(value["seed"])
+def read_params(value: dict) -> tuple[int, float, int, float]:
+    return int(value["N"]), value.get("offset", 1000), int(value["seed"]), float(value.get("cellSize", 3))
 
 
 def create_fake_sim(value: dict) -> dict:
     '''
     Settle the hyperparameters for a new fake simulation and build everything static about it.
-    value: {N, offset?, seed?}. A random seed is drawn when none is given; the returned seed
+    value: {N, maxTimestep, offset?, seed?, cellSize?}. A random seed is drawn when none is given; the returned seed
     is what must be stored to rebuild the sim later.
     '''
     if value.get("seed") is None:
         value = {**value, "seed": int(np.random.default_rng().integers(0, 2**31))}
-    N, offset, seed = read_params(value)
+    N, offset, seed, cell_size = read_params(value)
+    travel_time, _ = static_layers(N, offset, seed, cell_size)
+    sim = Simulation(None, value)
     return {
         "seed": seed,
+        # sim time per tick: frames are on this clock
+        "tickSeconds": TICK_SECONDS,
         "environment": {
-            "elevation": grid_payload(build_grid("elevation", N, offset, seed), decimals=2),
-            "canopy": grid_payload(build_grid("canopy", N, offset, seed)),
+            "elevation": grid_payload(build_grid("elevation", N, offset, seed, cell_size), decimals=2),
+            "canopy": grid_payload(build_grid("canopy", N, offset, seed, cell_size)),
             "perimeter": make_perimeter_fake(N),
+            # minutes to walk from the LKP (hiker start) to each cell
+            "travelTime": grid_payload(travel_time, decimals=2),
         },
-        "hiker": make_hiker_fake(N, seed),
+        # end: where the hiker is found (the walk heads there)
+        "hiker": {"start": sim.lkp, "end": sim.hiker.end},
     }
 
 

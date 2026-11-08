@@ -14,7 +14,7 @@ import { useMission } from '../hooks/useMission';
 import { computeRecoveryCorridor } from '../services/probabilityService';
 import { CONDITION_LABELS, GROUND_TEAM } from '../services/groundTeamService';
 import { cellToLatLon } from '../services/terrainService';
-import { TICK_SEC } from '../services/simulationService';
+import { tickSecOf } from '../services/simulationService';
 import { PROBABILITY_STOPS, rampCss } from '../lib/colors';
 import { PRIORITY_META } from '../lib/statusMeta';
 import { formatDuration, formatLatLon } from '../lib/format';
@@ -99,11 +99,11 @@ function RecoveryView({ missionId }: { missionId: string }) {
   const li = env.lkp.y * W + env.lkp.x;
   const fr = sig.fieldReport;
   const confirmTick = fr?.tick ?? sim.tick;
-  const hoursMissing = env.hoursMissingAtStart + (confirmTick * TICK_SEC) / 3600;
+  const hoursMissing = env.hoursMissingAtStart + (confirmTick * tickSecOf(env)) / 3600;
   const straightKm = (Math.hypot(sig.x - (env.lkp.x + 0.5), sig.y - (env.lkp.y + 0.5)) * g.cellSizeM) / 1000;
   const elevDelta = g.elevation[fi] - g.elevation[li];
-  const searchMin = (sig.tick * TICK_SEC) / 60;
-  const confirmMin = (confirmTick * TICK_SEC) / 60;
+  const searchMin = (sig.tick * tickSecOf(env)) / 60;
+  const confirmMin = (confirmTick * tickSecOf(env)) / 60;
   const foundLL = cellToLatLon(g, sig.x, sig.y);
   // Where the found spot sat in the initial probability map: share of prior mass in likelier cells.
   const rankPct = useMemo(() => {

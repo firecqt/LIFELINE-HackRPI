@@ -1,5 +1,13 @@
+ImageIO==2.38.1
+lazy-loader==0.6
+networkx==3.7
 numpy==2.5.4
+packaging==26.3
 pandas==3.1.1
+pillow==13.0.0
 python-dateutil==4.0.0
 pyzmq==27.3.0
+scikit-image==0.26.0
+scipy==1.18.1
+tifffile==2026.10.15
 tzdata==2026.6
