@@ -95,7 +95,6 @@ function makeDrone(i: number): FleetDrone {
   const rng = new Rng(9000 + i * 17);
   const spec = DRONE_MODELS[MODEL_ORDER[i]];
   let baseStatus: DroneStatus = 'standby';
-  if (ASSIGN[id]) baseStatus = i % 3 === 0 ? 'en_route' : 'searching';
   if (id === 'D-19') baseStatus = 'charging';
   if (id === 'D-20') baseStatus = 'maintenance';
   const flightHistory = Array.from({ length: 8 }, (_, k) => {

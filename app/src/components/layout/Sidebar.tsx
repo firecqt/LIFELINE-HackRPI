@@ -1,7 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { Footprints, LayoutDashboard, Map, Plus, Server, Users } from 'lucide-react';
-import { useEngineLinks } from '../../api/backendLink';
+import { Footprints, LayoutDashboard, Map, Plus, Users } from 'lucide-react';
 import { DroneIcon, LifelineLogo } from '../ui/icons';
 import { StatusDot } from '../ui';
 import { missionHoursMissing, useAppStore } from '../../store/appStore';
@@ -15,7 +14,6 @@ const NAV = [
   { to: '/people', label: 'Missing persons', icon: <Users size={17} /> },
   { to: '/ground', label: 'Ground team', icon: <Footprints size={17} /> },
   { to: '/drones', label: 'Drones', icon: <DroneIcon size={17} /> },
-  { to: '/backend', label: 'Backend link', icon: <Server size={17} /> },
 ];
 
 export default function Sidebar() {
@@ -24,7 +22,6 @@ export default function Sidebar() {
   const sessions = useAppStore((s) => s.sessions);
   const reports = useAppStore((s) => s.reports);
   const fleet = useAppStore((s) => s.fleet);
-  const liveLinks = useEngineLinks((s) => Object.values(s.links).filter((l) => l.status === 'streaming').length);
   const currentId = useAppStore((s) => s.currentMissionId);
   const setCurrent = useAppStore((s) => s.setCurrentMission);
   const openReports = reports.filter((r) => r.status === 'open').length;
@@ -67,7 +64,6 @@ export default function Sidebar() {
                 {n.to === '/ground' && fieldTasks > 0 && <span className={clsx('rounded px-1.5 text-[11px] font-semibold leading-[18px]', onScene ? 'bg-crit text-white' : 'bg-base2 text-ink')}>{fieldTasks}</span>}
                 {n.to === '/people' && openReports > 0 && <span className="rounded bg-base2 px-1.5 text-[11px] font-semibold leading-[18px] text-ink">{openReports}</span>}
                 {n.to === '/drones' && <span className="text-[11px] tabular-nums text-muted">{inAir} up</span>}
-                {n.to === '/backend' && liveLinks > 0 && <span className="text-[11px] tabular-nums text-ok">{liveLinks} streaming</span>}
               </>
             )}
           </NavLink>

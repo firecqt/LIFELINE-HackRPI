@@ -22,9 +22,9 @@ function fromReport(id: string, reportId: string, drones: string[], progress: nu
   };
 }
 
-/** SIMULATED active missions shown on the Overview dashboard at load. */
+/** SIMULATED missions shown on the Overview dashboard at load. All start not started, drones on the ground at base, until launched. */
 export const MOCK_MISSIONS: Mission[] = [
-  fromReport('M-001', 'INC-26-1107-014', ['D-01', 'D-02', 'D-03', 'D-04'], 0.68, 'active'),
-  fromReport('M-002', 'INC-26-1107-021', ['D-05', 'D-06'], 0.24, 'initializing'),
-  fromReport('M-003', 'INC-26-1107-009', ['D-07', 'D-08', 'D-09', 'D-10', 'D-11', 'D-12'], 0.91, 'high_priority'),
+  fromReport('M-001', 'INC-26-1107-014', ['D-01', 'D-02', 'D-03', 'D-04'], 0, 'ready'),
+  fromReport('M-002', 'INC-26-1107-021', ['D-05', 'D-06'], 0, 'ready'),
+  fromReport('M-003', 'INC-26-1107-009', ['D-07', 'D-08', 'D-09', 'D-10', 'D-11', 'D-12'], 0, 'ready'),
 ];

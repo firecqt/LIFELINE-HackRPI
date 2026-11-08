@@ -39,12 +39,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-/** Health check: the Node server serves its own test page at "/", so any 2xx means it is up. */
+/** Health check: any non-5xx answer through the proxy means the Node server is up. */
 export async function pingServer(): Promise<{ ok: boolean; message: string }> {
   try {
     const res = await fetch(`${BACKEND_BASE}/`, { method: 'HEAD' });
-    if (res.ok) return { ok: true, message: 'Server responding' };
-    return { ok: false, message: res.status >= 500 ? DOWN_MSG : `Server answered HTTP ${res.status}` };
+    // Any non-5xx answer comes from Express itself (it may no longer serve a page at "/").
+    if (res.status < 500) return { ok: true, message: 'Server responding' };
+    return { ok: false, message: DOWN_MSG };
   } catch {
     return { ok: false, message: DOWN_MSG };
   }

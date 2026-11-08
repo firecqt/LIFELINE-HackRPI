@@ -230,8 +230,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newAlerts: AlertItem[] = [];
     const newActivity: ActivityItem[] = [];
     const now = Date.now();
+    // Possible-sighting alerts (popup, bell entry, sound) only for the search open on the search map.
+    // Other searches still show the sighting as "Possible sighting" in the sidebar and Overview.
+    const seg = typeof window !== 'undefined' ? window.location.pathname.split('/') : [];
+    const viewing = seg[1] === 'map' && seg[2] === id;
     for (const e of events) {
-      if (ALERT_KINDS.has(e.kind)) {
+      if (ALERT_KINDS.has(e.kind) && (e.kind !== 'detection' || viewing)) {
         newAlerts.push({ id: `al-${++alertSeq}`, at: now, missionId: id, severity: e.severity, kind: e.kind, title: e.title, message: e.message, x: e.x, y: e.y, signalId: e.signalId, read: false });
       }
       newActivity.push({ id: `act-${++actSeq}`, at: now, missionId: id, kind: activityKind(e), message: e.message });
@@ -258,7 +262,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     // Audio: only a potential human detection makes a sound.
     const detection = events.find((e) => e.kind === 'detection');
-    if (detection && settings.sound) playDetectionAlert(detection.voice ?? 'Potential human detected.');
+    if (detection && viewing && settings.sound) playDetectionAlert(detection.voice ?? 'Potential human detected.');
   },
 
   dispatchGroundTeam: (id, signalId) => {

@@ -124,9 +124,9 @@ export async function createEngineSearch(input: CreateEngineSearchInput): Promis
   const search = buildBackendSearch({ created, isReal: input.isReal, cellSizeM: input.cellSizeM, hoursMissing: input.hoursMissing, missionId, drones });
 
   engineDriven.add(missionId);
-  // The engine flies the drones; the local ones lend names and colours, and appear from the first frame.
+  // The engine flies the drones; the local ones lend names and colours. Until launch they sit on
+  // the ground at the staging point in standby (same slots the engine parks them in).
   engineDroneTemplates.set(missionId, search.sim.drones);
-  search.sim.drones = [];
   useAppStore.setState((st) => ({ reports: [search.report, ...st.reports] }));
   useAppStore.getState().registerMission(search.mission, search.env, search.sim);
   const start = toPoint(created.hiker.start);
